@@ -8,6 +8,7 @@ import {
   Circle,
   ClipboardCheck,
   Clock3,
+  Copy,
   Download,
   ExternalLink,
   FileCheck2,
@@ -16,12 +17,12 @@ import {
   Headphones,
   Home,
   Images,
-  ListChecks,
   Loader2,
   LockKeyhole,
   MessageSquareText,
   Milestone,
   PlayCircle,
+  RotateCcw,
   AlertTriangle,
   Video,
   Wrench,
@@ -82,8 +83,8 @@ const VIEW_TITLES: Record<PortalView, { eyebrow: string; title: string; descript
   },
   tools: {
     eyebrow: "Ferramentas",
-    title: "Pronto para gravar.",
-    description: "Checklists práticos para preparar a equipe e não esquecer nada importante.",
+    title: "Tudo pronto para produzir.",
+    description: "Prepare a gravação, compartilhe pendências e revise entregas com segurança.",
   },
   contracts: {
     eyebrow: "Contratos",
@@ -596,8 +597,10 @@ function OverviewView({
     <div className="space-y-5">
       {approvals.length > 0 && (
         <button
+          type="button"
           onClick={() => onNavigate("approvals")}
-          className="portal-approval-alert group relative flex w-full overflow-hidden rounded-3xl border border-[var(--portal-accent)]/25 p-5 text-left md:items-center md:p-6"
+          aria-label={`Abrir ${approvals.length} ${approvals.length === 1 ? "material pendente" : "materiais pendentes"} de aprovação`}
+          className="portal-approval-alert group relative flex w-full overflow-hidden rounded-3xl border border-[var(--portal-accent)]/25 p-5 text-left outline-none focus-visible:ring-2 focus-visible:ring-[var(--portal-accent)]/70 md:items-center md:p-6"
         >
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_8%_0%,color-mix(in_srgb,var(--portal-accent)_18%,transparent),transparent_32%)]" />
           <AlertTriangle className="relative mt-0.5 size-6 shrink-0 text-[var(--portal-accent)] md:size-7" />
@@ -645,7 +648,16 @@ function OverviewView({
       )}
 
       <section className="grid gap-4 lg:grid-cols-[1.45fr_.55fr]">
-        <div className="portal-hero group relative flex min-h-[360px] flex-col justify-end overflow-hidden rounded-3xl border border-white/[0.08] md:min-h-[420px]">
+        <button
+          type="button"
+          onClick={() => onNavigate(approvals.length > 0 ? "approvals" : "production")}
+          aria-label={
+            approvals.length > 0
+              ? `Revisar materiais de ${project.name}`
+              : `Ver andamento de ${project.name}`
+          }
+          className="portal-hero group relative flex min-h-[360px] w-full flex-col justify-end overflow-hidden rounded-3xl border border-white/[0.08] text-left outline-none transition hover:border-white/[0.16] focus-visible:ring-2 focus-visible:ring-[var(--portal-accent)]/70 md:min-h-[420px]"
+        >
           <img
             src={portalCoverUrl(project.cover_url)}
             alt=""
@@ -688,12 +700,20 @@ function OverviewView({
                 style={{ width: `${displayProgress}%`, backgroundColor: accent }}
               />
             </div>
-            <div className="mt-4 flex flex-wrap justify-between gap-3 text-[10px] font-medium uppercase tracking-[.14em] text-white/45">
-              <span>Início · {formatDate(project.start_date)}</span>
-              <span>Entrega · {formatDate(project.due_date)}</span>
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-[10px] font-medium uppercase tracking-[.14em] text-white/45">
+              <span className="flex flex-wrap gap-x-5 gap-y-2">
+                <span>Início · {formatDate(project.start_date)}</span>
+                <span>Entrega · {formatDate(project.due_date)}</span>
+              </span>
+              <span className="inline-flex items-center gap-2 text-[var(--portal-accent)] transition group-hover:gap-3">
+                {approvals.length > 0
+                  ? `Revisar ${approvals.length} ${approvals.length === 1 ? "material" : "materiais"}`
+                  : "Ver andamento"}
+                <ChevronRight className="size-3.5" />
+              </span>
             </div>
           </div>
-        </div>
+        </button>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-1">
           <SummaryCard
             label="Aguardando você"
@@ -1473,6 +1493,7 @@ const CHECKLISTS = [
 function ToolsView({ token, accent }: { token: string; accent: string }) {
   const storageKey = `mh_portal_checklists_${token}`;
   const [checked, setChecked] = useState<Record<string, boolean>>({});
+
   useEffect(() => {
     try {
       setChecked(JSON.parse(localStorage.getItem(storageKey) || "{}"));
@@ -1480,67 +1501,286 @@ function ToolsView({ token, accent }: { token: string; accent: string }) {
       setChecked({});
     }
   }, [storageKey]);
-  const toggle = (key: string) => {
-    const next = { ...checked, [key]: !checked[key] };
+
+  const saveChecked = (next: Record<string, boolean>) => {
     setChecked(next);
     localStorage.setItem(storageKey, JSON.stringify(next));
   };
+
+  const toggle = (key: string) => {
+    const next = { ...checked, [key]: !checked[key] };
+    saveChecked(next);
+  };
+
+  const resetList = (listId: string) => {
+    const next = Object.fromEntries(
+      Object.entries(checked).filter(([key]) => !key.startsWith(`${listId}-`)),
+    );
+    saveChecked(next);
+    toast.success("Checklist reiniciado");
+  };
+
+  const totalItems = CHECKLISTS.reduce((total, list) => total + list.items.length, 0);
+  const totalDone = CHECKLISTS.reduce(
+    (total, list) => total + list.items.filter((_, index) => checked[`${list.id}-${index}`]).length,
+    0,
+  );
+  const overallProgress = Math.round((totalDone / totalItems) * 100);
+  const nextList =
+    CHECKLISTS.find((list) => list.items.some((_, index) => !checked[`${list.id}-${index}`])) ||
+    CHECKLISTS[CHECKLISTS.length - 1];
+
+  const continueChecklist = () => {
+    document
+      .getElementById(`checklist-${nextList.id}`)
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
+
+  const copyPendingItems = async () => {
+    const sections = CHECKLISTS.map((list) => {
+      const pending = list.items.filter((_, index) => !checked[`${list.id}-${index}`]);
+      if (pending.length === 0) return null;
+      return `${list.title}\n${pending.map((item) => `☐ ${item}`).join("\n")}`;
+    }).filter(Boolean);
+    const text =
+      sections.length > 0
+        ? `Checklist de produção\n\n${sections.join("\n\n")}`
+        : "Checklist de produção concluído. Tudo pronto por aqui.";
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success("Pendências copiadas", {
+        description: "Agora é só colar no WhatsApp ou no grupo da equipe.",
+      });
+    } catch {
+      toast.error("Não foi possível copiar a lista");
+    }
+  };
+
+  const reviewPoints = [
+    {
+      title: "Texto e informações",
+      description: "Nomes, datas, preços, contatos e legendas estão corretos?",
+    },
+    {
+      title: "Marca e identidade",
+      description: "Logos, cores, produtos e grafismos estão na versão certa?",
+    },
+    {
+      title: "Imagem e áudio",
+      description: "Falas, trilha, volume e imagens representam bem a marca?",
+    },
+    {
+      title: "Formato e destino",
+      description: "Duração, proporção e canal de publicação estão alinhados?",
+    },
+  ];
+
   return (
-    <div className="grid gap-4 lg:grid-cols-3">
-      {CHECKLISTS.map((list) => {
-        const done = list.items.filter((_, index) => checked[`${list.id}-${index}`]).length;
-        return (
-          <section
-            key={list.id}
-            className="rounded-3xl border border-white/[0.08] bg-white/[0.02] p-5"
+    <div className="space-y-5">
+      <section className="relative overflow-hidden rounded-3xl border border-[var(--portal-accent)]/20 bg-white/[0.025] p-5 md:p-7">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_88%_0%,color-mix(in_srgb,var(--portal-accent)_15%,transparent),transparent_34%)]" />
+        <div className="relative grid gap-6 md:grid-cols-[1fr_auto] md:items-center">
+          <div className="flex min-w-0 items-center gap-4">
+            <div
+              className="grid size-14 shrink-0 place-items-center rounded-2xl border border-[var(--portal-accent)]/20 bg-[var(--portal-accent)]/[0.07]"
+              style={{ color: accent }}
+            >
+              {overallProgress === 100 ? (
+                <CheckCircle2 className="size-6" />
+              ) : (
+                <ClipboardCheck className="size-6" />
+              )}
+            </div>
+            <div className="min-w-0">
+              <p className="text-[9px] font-semibold uppercase tracking-[.18em] text-[var(--portal-accent)]">
+                Seu preparo
+              </p>
+              <h2 className="mt-2 text-xl font-semibold tracking-[-.035em] md:text-2xl">
+                {overallProgress === 100
+                  ? "Tudo conferido. Pode seguir."
+                  : `${totalItems - totalDone} itens ainda pedem atenção`}
+              </h2>
+              <p className="mt-1 text-xs leading-5 text-white/38">
+                O progresso fica salvo neste dispositivo para você continuar depois.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={continueChecklist}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[var(--portal-accent)] px-5 text-xs font-semibold text-black transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--portal-accent)]/60"
           >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <ListChecks className="size-5" style={{ color: accent }} />
-                <h2 className="mt-4 text-lg font-semibold">{list.title}</h2>
-                <p className="mt-1 text-xs text-white/30">{list.description}</p>
-              </div>
-              <span className="text-[10px] text-white/25">
-                {done}/{list.items.length}
-              </span>
-            </div>
-            <div className="mt-5 h-1 overflow-hidden rounded-full bg-white/[0.06]">
-              <div
-                className="h-full rounded-full transition-all"
-                style={{ width: `${(done / list.items.length) * 100}%`, backgroundColor: accent }}
-              />
-            </div>
-            <div className="mt-5 space-y-2">
-              {list.items.map((item, index) => {
-                const key = `${list.id}-${index}`;
-                return (
-                  <label
-                    key={key}
-                    className="flex cursor-pointer items-start gap-3 rounded-xl p-2 text-xs text-white/50 transition hover:bg-white/[0.03]"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={Boolean(checked[key])}
-                      onChange={() => toggle(key)}
-                      className="sr-only"
-                    />
+            {overallProgress === 100 ? "Rever checklist" : "Continuar checklist"}
+            <ChevronRight className="size-4" />
+          </button>
+        </div>
+        <div className="relative mt-6">
+          <div className="mb-2 flex items-center justify-between text-[10px] uppercase tracking-[.13em] text-white/30">
+            <span>
+              {totalDone} de {totalItems} concluídos
+            </span>
+            <span className="font-semibold text-[var(--portal-accent)]">{overallProgress}%</span>
+          </div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-white/[0.07]">
+            <div
+              className="h-full rounded-full shadow-[0_0_14px_var(--portal-accent)] transition-all duration-500"
+              style={{ width: `${overallProgress}%`, backgroundColor: accent }}
+            />
+          </div>
+        </div>
+      </section>
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        {CHECKLISTS.map((list, listIndex) => {
+          const done = list.items.filter((_, index) => checked[`${list.id}-${index}`]).length;
+          const status =
+            done === list.items.length ? "Concluído" : done > 0 ? "Em andamento" : "A fazer";
+          return (
+            <section
+              id={`checklist-${list.id}`}
+              key={list.id}
+              className="scroll-mt-24 rounded-3xl border border-white/[0.08] bg-white/[0.02] p-5 transition hover:border-white/[0.13]"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="grid size-8 place-items-center rounded-lg bg-[var(--portal-accent)]/[0.08] text-xs font-semibold"
+                      style={{ color: accent }}
+                    >
+                      0{listIndex + 1}
+                    </span>
                     <span
                       className={cn(
-                        "mt-0.5 grid size-4 shrink-0 place-items-center rounded border",
-                        checked[key] ? "border-transparent text-black" : "border-white/15",
+                        "rounded-full px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[.1em]",
+                        done === list.items.length
+                          ? "bg-[var(--portal-accent)]/[0.1] text-[var(--portal-accent)]"
+                          : "bg-white/[0.045] text-white/35",
                       )}
-                      style={checked[key] ? { backgroundColor: accent } : undefined}
                     >
-                      {checked[key] && <Check className="size-3" />}
+                      {status}
                     </span>
-                    <span className={cn(checked[key] && "text-white/25 line-through")}>{item}</span>
-                  </label>
-                );
-              })}
+                  </div>
+                  <h2 className="mt-4 text-lg font-semibold">{list.title}</h2>
+                  <p className="mt-1 text-xs leading-5 text-white/30">{list.description}</p>
+                </div>
+                <span className="shrink-0 text-[10px] tabular-nums text-white/25">
+                  {done}/{list.items.length}
+                </span>
+              </div>
+              <div className="mt-5 h-1 overflow-hidden rounded-full bg-white/[0.06]">
+                <div
+                  className="h-full rounded-full transition-all"
+                  style={{ width: `${(done / list.items.length) * 100}%`, backgroundColor: accent }}
+                />
+              </div>
+              <div className="mt-4 space-y-1">
+                {list.items.map((item, index) => {
+                  const key = `${list.id}-${index}`;
+                  return (
+                    <label
+                      key={key}
+                      className="group/item flex min-h-10 cursor-pointer items-center gap-3 rounded-xl px-2.5 py-2 text-xs text-white/52 transition hover:bg-white/[0.035]"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={Boolean(checked[key])}
+                        onChange={() => toggle(key)}
+                        className="sr-only"
+                      />
+                      <span
+                        className={cn(
+                          "grid size-[18px] shrink-0 place-items-center rounded-md border transition",
+                          checked[key]
+                            ? "border-transparent text-black"
+                            : "border-white/15 group-hover/item:border-white/30",
+                        )}
+                        style={checked[key] ? { backgroundColor: accent } : undefined}
+                      >
+                        {checked[key] && <Check className="size-3" />}
+                      </span>
+                      <span
+                        className={cn("leading-5", checked[key] && "text-white/24 line-through")}
+                      >
+                        {item}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+              {done > 0 && (
+                <button
+                  type="button"
+                  onClick={() => resetList(list.id)}
+                  className="mt-4 inline-flex items-center gap-1.5 text-[10px] text-white/25 transition hover:text-white/55"
+                >
+                  <RotateCcw className="size-3" />
+                  Reiniciar esta etapa
+                </button>
+              )}
+            </section>
+          );
+        })}
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-[.8fr_1.2fr]">
+        <section className="flex flex-col rounded-3xl border border-white/[0.08] bg-white/[0.02] p-5 md:p-6">
+          <div className="flex items-start justify-between gap-4">
+            <span className="grid size-10 place-items-center rounded-xl bg-[var(--portal-accent)]/[0.08]">
+              <Copy className="size-4" style={{ color: accent }} />
+            </span>
+            <span className="text-[9px] uppercase tracking-[.14em] text-white/24">Ação rápida</span>
+          </div>
+          <h2 className="mt-5 text-lg font-semibold">Leve as pendências para a equipe</h2>
+          <p className="mt-2 text-xs leading-5 text-white/35">
+            Copie apenas o que ainda falta e envie no WhatsApp, no grupo da gravação ou onde
+            preferir.
+          </p>
+          <button
+            type="button"
+            onClick={copyPendingItems}
+            className="mt-6 inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.035] px-4 text-xs font-medium text-white/65 transition hover:border-[var(--portal-accent)]/30 hover:text-white"
+          >
+            <Copy className="size-3.5" />
+            Copiar itens pendentes
+          </button>
+        </section>
+
+        <section className="rounded-3xl border border-white/[0.08] bg-white/[0.02] p-5 md:p-6">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <p className="text-[9px] font-semibold uppercase tracking-[.16em] text-[var(--portal-accent)]">
+                Guia de aprovação
+              </p>
+              <h2 className="mt-2 text-lg font-semibold">Antes de aprovar um material</h2>
             </div>
-          </section>
-        );
-      })}
+            <p className="max-w-xs text-xs leading-5 text-white/30">
+              Quatro pontos evitam retrabalho e deixam o feedback mais objetivo.
+            </p>
+          </div>
+          <div className="mt-5 grid gap-2 sm:grid-cols-2">
+            {reviewPoints.map((point, index) => (
+              <div
+                key={point.title}
+                className="rounded-2xl border border-white/[0.06] bg-black/10 p-4"
+              >
+                <div className="flex items-start gap-3">
+                  <span
+                    className="grid size-6 shrink-0 place-items-center rounded-full bg-[var(--portal-accent)]/[0.09] text-[10px] font-semibold"
+                    style={{ color: accent }}
+                  >
+                    {index + 1}
+                  </span>
+                  <div>
+                    <p className="text-xs font-medium text-white/70">{point.title}</p>
+                    <p className="mt-1 text-[11px] leading-4 text-white/30">{point.description}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
     </div>
   );
 }
