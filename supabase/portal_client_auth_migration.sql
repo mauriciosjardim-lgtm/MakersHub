@@ -111,9 +111,9 @@ for each row
 execute function public.guard_internal_user_identity();
 
 -- Evita que contas do portal sejam cadastradas como membros da produtora.
--- A classificação protegida vem de app_metadata, definida exclusivamente pela
--- API administrativa. O vínculo em portal_client_users também é criado pela API
--- com service role; o trigger nunca confia em user_metadata para conceder acesso.
+-- app_metadata é a classificação protegida; user_metadata funciona apenas como
+-- sinal antecipado devido ao timing do GoTrue e nunca concede acesso. O vínculo
+-- em portal_client_users é criado exclusivamente pela API com service role.
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -124,7 +124,12 @@ declare
   v_empresa_id uuid;
   v_convite equipe_convites%rowtype;
 begin
-  if new.raw_app_meta_data->>'account_type' = 'client_portal' then
+  -- O GoTrue pode gravar app_metadata num UPDATE posterior ao INSERT.
+  -- user_metadata só evita o trial indevido; nunca concede acesso ao portal.
+  if coalesce(
+    new.raw_app_meta_data->>'account_type',
+    new.raw_user_meta_data->>'account_type'
+  ) = 'client_portal' then
     return new;
   end if;
 

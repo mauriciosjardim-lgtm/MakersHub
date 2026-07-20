@@ -131,7 +131,12 @@ declare
   v_empresa_id uuid;
   v_convite equipe_convites%rowtype;
 begin
-  if new.raw_app_meta_data->>'account_type' = 'client_portal' then
+  -- O GoTrue pode gravar app_metadata num UPDATE posterior ao INSERT.
+  -- user_metadata só evita o trial indevido; nunca concede acesso ao portal.
+  if coalesce(
+    new.raw_app_meta_data->>'account_type',
+    new.raw_user_meta_data->>'account_type'
+  ) = 'client_portal' then
     return new;
   end if;
 
@@ -184,6 +189,54 @@ begin
   return new;
 end;
 $function$;
+
+-- Compensação defensiva para instalações que ainda executem uma versão antiga
+-- do trigger. Só remove a empresa trial recém-criada quando o único usuário
+-- vinculado é exatamente a conta de portal que falhou durante o provisionamento.
+create or replace function public.cleanup_failed_portal_provisioning(
+  p_auth_user_id uuid,
+  p_empresa_id uuid
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $function$
+declare
+  v_deleted_count integer := 0;
+begin
+  if auth.role() <> 'service_role' then
+    raise exception using
+      errcode = '42501',
+      message = 'Operação restrita ao serviço';
+  end if;
+
+  delete from public.empresas e
+  where e.id = p_empresa_id
+    and e.criado_em >= now() - interval '15 minutes'
+    and e.trial_expires_at is not null
+    and exists (
+      select 1
+      from public.usuarios u
+      where u.id = p_auth_user_id
+        and u.empresa_id = e.id
+    )
+    and not exists (
+      select 1
+      from public.usuarios u
+      where u.empresa_id = e.id
+        and u.id <> p_auth_user_id
+    );
+
+  get diagnostics v_deleted_count = row_count;
+  return v_deleted_count > 0;
+end;
+$function$;
+
+revoke all on function public.cleanup_failed_portal_provisioning(uuid, uuid)
+  from public, anon, authenticated;
+grant execute on function public.cleanup_failed_portal_provisioning(uuid, uuid)
+  to service_role;
 
 -- clientes_comercial é a fonte canônica do token. A função também garante que
 -- o usuário pertence ao cliente e que ambos os acessos estão ativos.

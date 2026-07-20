@@ -68,9 +68,10 @@ export const Route = createFileRoute("/api/portal/usuarios")({
             account_type: "client_portal",
           },
           user_metadata: {
-            // Mantido durante a transição para instalações que ainda estejam
-            // com o trigger anterior. O trigger novo confia apenas em
-            // raw_app_meta_data, que não pode ser definido num signup público.
+            // O GoTrue pode preencher app_metadata somente após o INSERT em
+            // auth.users. O trigger usa este sinal apenas para não criar uma
+            // empresa trial; o acesso ao portal continua sendo concedido
+            // exclusivamente abaixo, pela API autenticada com service role.
             account_type: "client_portal",
             empresa_id: context.empresaId,
             cliente_id: clientId,
@@ -100,6 +101,29 @@ export const Route = createFileRoute("/api/portal/usuarios")({
           { onConflict: "id" },
         );
         if (profileError) {
+          console.error("[portal/usuarios] falha no upsert:", JSON.stringify(profileError));
+          const { data: unexpectedInternalUser } = await context.sb
+            .from("usuarios")
+            .select("empresa_id")
+            .eq("id", data.user.id)
+            .maybeSingle();
+
+          if (unexpectedInternalUser?.empresa_id) {
+            const { error: cleanupError } = await context.sb.rpc(
+              "cleanup_failed_portal_provisioning",
+              {
+                p_auth_user_id: data.user.id,
+                p_empresa_id: unexpectedInternalUser.empresa_id,
+              },
+            );
+            if (cleanupError) {
+              console.error(
+                "[portal/usuarios] falha ao limpar empresa de provisionamento:",
+                JSON.stringify(cleanupError),
+              );
+            }
+          }
+
           await context.sb.auth.admin.deleteUser(data.user.id);
           return json({ error: "A conta não pôde ser vinculada ao portal do cliente" }, 500);
         }
