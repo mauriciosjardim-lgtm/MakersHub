@@ -80,13 +80,13 @@ function PortalPasswordRecovery() {
   };
 
   return (
-    <main className="relative grid min-h-screen place-items-center overflow-hidden bg-[#080a08] px-5 py-10 text-white">
+    <main className="relative flex min-h-[100dvh] w-full items-start justify-center overflow-x-hidden bg-[#080a08] px-3 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[max(1.5rem,env(safe-area-inset-top))] text-white sm:items-center sm:px-5 sm:py-10">
       <div className="pointer-events-none absolute left-1/2 top-[-20rem] size-[46rem] -translate-x-1/2 rounded-full bg-lime-300/[0.08] blur-[120px]" />
-      <div className="relative w-full max-w-[420px]">
-        <div className="mb-8 flex items-center justify-center gap-3">
-          <LogoMakersHub className="size-10" />
+      <div className="relative min-w-0 w-full max-w-[420px]">
+        <div className="mb-6 flex items-center justify-center gap-3 sm:mb-8">
+          <LogoMakersHub className="size-9 sm:size-10" />
           <div>
-            <p className="font-display text-lg font-semibold">
+            <p className="font-display text-base font-semibold sm:text-lg">
               Makers <span className="text-lime-300">Members</span>
             </p>
             <p className="text-[10px] uppercase tracking-[.2em] text-white/35">
@@ -95,7 +95,7 @@ function PortalPasswordRecovery() {
           </div>
         </div>
 
-        <section className="rounded-[24px] border border-white/10 bg-white/[0.045] p-7 shadow-2xl backdrop-blur-xl">
+        <section className="min-w-0 w-full rounded-[20px] border border-white/10 bg-white/[0.045] p-4 shadow-2xl backdrop-blur-xl sm:rounded-[24px] sm:p-7">
           <span className="mx-auto grid size-11 place-items-center rounded-2xl border border-lime-300/20 bg-lime-300/10 text-lime-300">
             {state === "done" ? (
               <CheckCircle2 className="size-5" />
@@ -108,7 +108,7 @@ function PortalPasswordRecovery() {
 
           {state === "invalid" ? (
             <div className="text-center">
-              <h1 className="mt-5 font-display text-2xl font-semibold">
+              <h1 className="mt-5 font-display text-xl font-semibold sm:text-2xl">
                 Link inválido ou expirado
               </h1>
               <p className="mt-2 text-xs leading-5 text-white/45">
@@ -123,14 +123,16 @@ function PortalPasswordRecovery() {
             </div>
           ) : state === "done" ? (
             <div className="text-center">
-              <h1 className="mt-5 font-display text-2xl font-semibold">Senha atualizada</h1>
+              <h1 className="mt-5 font-display text-xl font-semibold sm:text-2xl">
+                Senha atualizada
+              </h1>
               <p className="mt-2 text-xs leading-5 text-white/45">
                 Estamos levando você de volta ao seu portal.
               </p>
             </div>
           ) : (
             <>
-              <h1 className="mt-5 text-center font-display text-2xl font-semibold">
+              <h1 className="mt-5 text-center font-display text-xl font-semibold sm:text-2xl">
                 Crie uma nova senha
               </h1>
               <p className="mt-2 text-center text-xs leading-5 text-white/45">

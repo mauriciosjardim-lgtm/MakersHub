@@ -1,5 +1,5 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useRef, useState } from "react";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, Eye, EyeOff, Loader2, LockKeyhole, Mail, MailCheck } from "lucide-react";
 import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ export const Route = createFileRoute("/portal/login")({
 });
 
 function PortalLogin() {
+  const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -23,7 +24,18 @@ function PortalLogin() {
   const [recovering, setRecovering] = useState(false);
   const [recoverySent, setRecoverySent] = useState(false);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const [compactCaptcha, setCompactCaptcha] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(max-width: 359px)").matches,
+  );
   const turnstileRef = useRef<TurnstileInstance | null>(null);
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 359px)");
+    const sync = () => setCompactCaptcha(media.matches);
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, []);
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -58,7 +70,15 @@ function PortalLogin() {
     const next = new URLSearchParams(window.location.search).get("next");
     const safeNext =
       next?.startsWith("/portal/") && !next.startsWith("/portal/login") ? next : null;
-    window.location.assign(safeNext || "/portal/acesso");
+    const destination = new URL(safeNext || "/portal/acesso", window.location.origin);
+    const destinationToken =
+      decodeURIComponent(destination.pathname.slice("/portal/".length)) || "acesso";
+    await navigate({
+      to: "/portal/$token",
+      params: { token: destinationToken },
+      hash: destination.hash.slice(1),
+      replace: true,
+    });
   };
 
   const sendRecovery = async (event: React.FormEvent) => {
@@ -91,24 +111,24 @@ function PortalLogin() {
   };
 
   return (
-    <main className="relative grid min-h-screen place-items-center overflow-hidden bg-[#080a08] px-5 py-10 text-white">
+    <main className="relative flex min-h-[100dvh] w-full items-start justify-center overflow-x-hidden bg-[#080a08] px-3 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[max(1.5rem,env(safe-area-inset-top))] text-white sm:items-center sm:px-5 sm:py-10">
       <div className="pointer-events-none absolute left-1/2 top-[-20rem] size-[46rem] -translate-x-1/2 rounded-full bg-lime-300/[0.08] blur-[120px]" />
-      <div className="relative w-full max-w-[420px]">
-        <div className="mb-8 flex items-center justify-center gap-3">
-          <LogoMakersHub className="size-10" />
+      <div className="relative min-w-0 w-full max-w-[420px]">
+        <div className="mb-6 flex items-center justify-center gap-3 sm:mb-8">
+          <LogoMakersHub className="size-9 sm:size-10" />
           <div>
-            <p className="font-display text-lg font-semibold">
+            <p className="font-display text-base font-semibold sm:text-lg">
               Makers <span className="text-lime-300">Members</span>
             </p>
             <p className="text-[10px] uppercase tracking-[.2em] text-white/35">Portal do cliente</p>
           </div>
         </div>
 
-        <section className="rounded-[24px] border border-white/10 bg-white/[0.045] p-7 shadow-2xl backdrop-blur-xl">
+        <section className="min-w-0 w-full rounded-[20px] border border-white/10 bg-white/[0.045] p-4 shadow-2xl backdrop-blur-xl sm:rounded-[24px] sm:p-7">
           <span className="mx-auto grid size-11 place-items-center rounded-2xl border border-lime-300/20 bg-lime-300/10 text-lime-300">
             {recovering ? <MailCheck className="size-5" /> : <LockKeyhole className="size-5" />}
           </span>
-          <h1 className="mt-5 text-center font-display text-2xl font-semibold">
+          <h1 className="mt-5 text-center font-display text-xl font-semibold sm:text-2xl">
             {recovering ? "Recupere seu acesso" : "Acesse seu espaço"}
           </h1>
           <p className="mt-2 text-center text-xs leading-5 text-white/45">
@@ -179,13 +199,20 @@ function PortalLogin() {
               </p>
             )}
             {TURNSTILE_SITE_KEY && !recoverySent && (
-              <Turnstile
-                ref={turnstileRef}
-                siteKey={TURNSTILE_SITE_KEY}
-                onSuccess={setTurnstileToken}
-                onExpire={() => setTurnstileToken(null)}
-                options={{ theme: "dark", language: "pt-BR", size: "flexible" }}
-              />
+              <div className="flex min-w-0 max-w-full justify-center overflow-hidden">
+                <Turnstile
+                  key={compactCaptcha ? "compact" : "flexible"}
+                  ref={turnstileRef}
+                  siteKey={TURNSTILE_SITE_KEY}
+                  onSuccess={setTurnstileToken}
+                  onExpire={() => setTurnstileToken(null)}
+                  options={{
+                    theme: "dark",
+                    language: "pt-BR",
+                    size: compactCaptcha ? "compact" : "flexible",
+                  }}
+                />
+              </div>
             )}
             {error && (
               <p className="rounded-lg border border-red-400/20 bg-red-400/10 px-3 py-2 text-xs text-red-300">

@@ -158,14 +158,16 @@ function ClientPortalPage() {
   }, [token]);
 
   const load = useCallback(async () => {
+    let redirectingToLogin = false;
     try {
       if (!(import.meta.env.DEV && token === "preview")) {
         const {
           data: { session },
         } = await portalSupabase.auth.getSession();
         if (!session) {
+          redirectingToLogin = true;
           const next = `${window.location.pathname}${window.location.hash}`;
-          window.location.assign(`/portal/login?next=${encodeURIComponent(next)}`);
+          window.location.replace(`/portal/login?next=${encodeURIComponent(next)}`);
           return;
         }
       }
@@ -189,7 +191,7 @@ function ClientPortalPage() {
     } catch {
       setNotFound(true);
     } finally {
-      setLoading(false);
+      if (!redirectingToLogin) setLoading(false);
     }
   }, [token]);
 
@@ -273,7 +275,7 @@ function ClientPortalPage() {
 
   if (loading) {
     return (
-      <div className="grid min-h-screen place-items-center bg-[#080a09] text-white">
+      <div className="grid min-h-[100dvh] place-items-center bg-[#080a09] text-white">
         <Loader2 className="size-7 animate-spin text-[#a3ff2b]" />
       </div>
     );
@@ -281,7 +283,7 @@ function ClientPortalPage() {
 
   if (notFound || !portal) {
     return (
-      <div className="grid min-h-screen place-items-center bg-[#080a09] px-6 text-center text-white">
+      <div className="grid min-h-[100dvh] place-items-center bg-[#080a09] px-6 text-center text-white">
         <div>
           <div className="mx-auto grid size-14 place-items-center rounded-2xl bg-white/5">
             <FolderOpen className="size-6 text-white/40" />
@@ -300,7 +302,7 @@ function ClientPortalPage() {
 
   return (
     <div
-      className="min-h-screen bg-[#080a09] text-white"
+      className="min-h-[100dvh] bg-[#080a09] text-white"
       style={{ "--portal-accent": accent } as React.CSSProperties}
     >
       <PortalSidebar
