@@ -19,6 +19,7 @@ import {
   Images,
   Loader2,
   LockKeyhole,
+  LogOut,
   MessageSquareText,
   Milestone,
   PlayCircle,
@@ -136,7 +137,7 @@ function formatDate(value: string | null) {
 function viewFromHash(): PortalView {
   if (typeof window === "undefined") return "overview";
   const candidate = window.location.hash.replace("#", "") as PortalView;
-  return candidate in VIEW_TITLES ? candidate : "overview";
+  return candidate in VIEW_TITLES && candidate !== "tools" ? candidate : "overview";
 }
 
 function ClientPortalPage() {
@@ -147,6 +148,7 @@ function ClientPortalPage() {
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [view, setView] = useState<PortalView>("overview");
+  const [signingOut, setSigningOut] = useState(false);
 
   useLayoutEffect(() => {
     if (/^[a-f0-9]{24,64}$/i.test(token)) {
@@ -216,6 +218,16 @@ function ClientPortalPage() {
     setView(next);
     window.location.hash = next;
     window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const signOut = async () => {
+    if (signingOut) return;
+    setSigningOut(true);
+    try {
+      await portalSupabase.auth.signOut({ scope: "local" });
+    } finally {
+      window.location.replace("/portal/login");
+    }
   };
 
   const respond = async (
@@ -311,11 +323,20 @@ function ClientPortalPage() {
         project={activeProject}
         activeView={view}
         onNavigate={navigate}
+        onSignOut={signOut}
+        signingOut={signingOut}
         accent={accent}
       />
 
       <div className="min-w-0 lg:pl-[272px]">
-        <PortalTopbar portal={portal} view={view} onNavigate={navigate} accent={accent} />
+        <PortalTopbar
+          portal={portal}
+          view={view}
+          onNavigate={navigate}
+          onSignOut={signOut}
+          signingOut={signingOut}
+          accent={accent}
+        />
 
         <main className="mx-auto max-w-[1380px] px-5 py-8 md:px-8 md:py-10 xl:px-12">
           <PageHeading
@@ -366,24 +387,34 @@ function PortalSidebar({
   project,
   activeView,
   onNavigate,
+  onSignOut,
+  signingOut,
   accent,
 }: {
   portal: ClientPortalSnapshot;
   project?: PortalProject;
   activeView: PortalView;
   onNavigate: (view: PortalView) => void;
+  onSignOut: () => void;
+  signingOut: boolean;
   accent: string;
 }) {
   const approvals =
     project?.deliverables.filter((item) => item.kind !== "delivery" && item.status === "revisao")
       .length ?? 0;
-  const menu: Array<{ id: PortalView; label: string; icon: typeof Home; badge?: number }> = [
+  const menu: Array<{
+    id: PortalView;
+    label: string;
+    icon: typeof Home;
+    badge?: number;
+    disabled?: boolean;
+  }> = [
     { id: "overview", label: "Visão geral", icon: Home },
     { id: "production", label: "Produção atual", icon: Video },
     { id: "approvals", label: "Aprovações", icon: ClipboardCheck, badge: approvals },
     { id: "deliveries", label: "Entregas", icon: Images },
     { id: "resources", label: "Arquivos úteis", icon: FolderOpen },
-    { id: "tools", label: "Ferramentas", icon: Wrench },
+    { id: "tools", label: "Ferramentas", icon: Wrench, disabled: true },
     { id: "contracts", label: "Contratos", icon: FileCheck2 },
   ];
 
@@ -422,21 +453,31 @@ function PortalSidebar({
 
       <p className="mb-2 mt-7 px-3 text-[9px] uppercase tracking-[.18em] text-white/22">Menu</p>
       <nav className="space-y-1">
-        {menu.map(({ id, label, icon: Icon, badge }) => {
+        {menu.map(({ id, label, icon: Icon, badge, disabled }) => {
           const active = activeView === id;
           return (
             <button
               key={id}
-              onClick={() => onNavigate(id)}
+              type="button"
+              onClick={() => !disabled && onNavigate(id)}
+              disabled={disabled}
               className={cn(
                 "flex h-11 w-full items-center gap-3 rounded-xl px-3 text-xs font-medium transition",
-                active ? "text-black" : "text-white/42 hover:bg-white/[0.04] hover:text-white/78",
+                disabled
+                  ? "cursor-not-allowed text-white/24"
+                  : active
+                    ? "text-black"
+                    : "text-white/42 hover:bg-white/[0.04] hover:text-white/78",
               )}
               style={active ? { backgroundColor: accent } : undefined}
             >
               <Icon className="size-4" />
               <span>{label}</span>
-              {badge ? (
+              {disabled ? (
+                <span className="ml-auto rounded-full border border-white/[0.08] bg-white/[0.035] px-2 py-1 text-[8px] font-semibold uppercase tracking-[.1em] text-white/28">
+                  Em breve
+                </span>
+              ) : badge ? (
                 <span
                   className={cn(
                     "ml-auto rounded-full px-2 py-0.5 text-[9px]",
@@ -452,6 +493,19 @@ function PortalSidebar({
       </nav>
 
       <div className="mt-auto">
+        <button
+          type="button"
+          onClick={onSignOut}
+          disabled={signingOut}
+          className="mb-3 flex h-10 w-full items-center gap-2 rounded-xl px-3 text-[11px] text-white/38 transition hover:bg-white/[0.04] hover:text-white/75 disabled:cursor-wait disabled:opacity-50"
+        >
+          {signingOut ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <LogOut className="size-3.5" />
+          )}
+          {signingOut ? "Saindo…" : "Sair da conta"}
+        </button>
         <div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] p-4">
           <div className="flex items-center gap-2">
             <span className="relative flex size-2">
@@ -485,21 +539,25 @@ function PortalTopbar({
   portal,
   view,
   onNavigate,
+  onSignOut,
+  signingOut,
   accent,
 }: {
   portal: ClientPortalSnapshot;
   view: PortalView;
   onNavigate: (view: PortalView) => void;
+  onSignOut: () => void;
+  signingOut: boolean;
   accent: string;
 }) {
-  const mobileViews: PortalView[] = [
-    "overview",
-    "production",
-    "approvals",
-    "deliveries",
-    "resources",
-    "tools",
-    "contracts",
+  const mobileViews: Array<{ id: PortalView; disabled?: boolean }> = [
+    { id: "overview" },
+    { id: "production" },
+    { id: "approvals" },
+    { id: "deliveries" },
+    { id: "resources" },
+    { id: "tools", disabled: true },
+    { id: "contracts" },
   ];
   return (
     <>
@@ -520,23 +578,44 @@ function PortalTopbar({
           <button className="hidden h-9 items-center gap-2 rounded-xl border border-white/[0.08] px-3 text-[11px] text-white/45 transition hover:bg-white/[0.04] sm:flex">
             <MessageSquareText className="size-3.5" /> Falar com a equipe
           </button>
+          <button
+            type="button"
+            onClick={onSignOut}
+            disabled={signingOut}
+            aria-label="Sair da conta"
+            title="Sair da conta"
+            className="grid size-9 place-items-center rounded-full border border-white/[0.08] bg-white/[0.03] text-white/42 transition hover:bg-white/[0.07] hover:text-white disabled:cursor-wait disabled:opacity-50"
+          >
+            {signingOut ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <LogOut className="size-3.5" />
+            )}
+          </button>
           <span className="grid size-9 place-items-center rounded-full border border-white/[0.08] bg-white/[0.03] text-[11px] font-semibold">
             {portal.client.name.slice(0, 2).toUpperCase()}
           </span>
         </div>
       </header>
       <nav className="flex gap-2 overflow-x-auto border-b border-white/[0.05] bg-[#080a09] px-5 py-3 lg:hidden">
-        {mobileViews.map((item) => (
+        {mobileViews.map(({ id, disabled }) => (
           <button
-            key={item}
-            onClick={() => onNavigate(item)}
+            key={id}
+            type="button"
+            onClick={() => !disabled && onNavigate(id)}
+            disabled={disabled}
             className={cn(
               "shrink-0 rounded-full border px-3 py-1.5 text-[10px]",
-              item === view ? "border-transparent text-black" : "border-white/10 text-white/38",
+              disabled
+                ? "cursor-not-allowed border-white/[0.06] text-white/20"
+                : id === view
+                  ? "border-transparent text-black"
+                  : "border-white/10 text-white/38",
             )}
-            style={item === view ? { backgroundColor: accent } : undefined}
+            style={id === view ? { backgroundColor: accent } : undefined}
           >
-            {VIEW_TITLES[item].eyebrow}
+            {VIEW_TITLES[id].eyebrow}
+            {disabled && <span className="ml-1.5 text-[8px] uppercase">Em breve</span>}
           </button>
         ))}
       </nav>
@@ -1313,6 +1392,7 @@ function DeliveriesArchive({
       )
       .map((item) => ({
         ...item,
+        projectId: project.id,
         project: project.name,
         fallbackDate: project.due_date || project.start_date,
       })),
@@ -1323,26 +1403,35 @@ function DeliveriesArchive({
     const key = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
     groups.set(key, [...(groups.get(key) || []), item]);
   });
-  const years = [...groups.keys()].map((key) => key.slice(0, 4));
-  const selectedYear = years.sort().reverse()[0] || String(new Date().getFullYear());
+  const availableYears = [...new Set([...groups.keys()].map((key) => key.slice(0, 4)))]
+    .sort()
+    .reverse();
+  const [selectedYear, setSelectedYear] = useState("");
+  const activeYear = availableYears.includes(selectedYear)
+    ? selectedYear
+    : availableYears[0] || String(new Date().getFullYear());
   const months = [...groups.entries()]
-    .filter(([key]) => key.startsWith(selectedYear))
+    .filter(([key]) => key.startsWith(activeYear))
     .sort(([a], [b]) => b.localeCompare(a));
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
         <div className="flex gap-2">
-          {[...new Set(years)]
-            .sort()
-            .reverse()
-            .map((year) => (
-              <span
-                key={year}
-                className="rounded-full bg-[var(--portal-accent)] px-4 py-2 text-xs font-semibold text-black"
-              >
-                {year}
-              </span>
-            ))}
+          {availableYears.map((year) => (
+            <button
+              key={year}
+              type="button"
+              onClick={() => setSelectedYear(year)}
+              className={cn(
+                "rounded-full px-4 py-2 text-xs font-semibold transition",
+                year === activeYear
+                  ? "bg-[var(--portal-accent)] text-black"
+                  : "border border-white/[0.08] text-white/35 hover:bg-white/[0.04] hover:text-white/65",
+              )}
+            >
+              {year}
+            </button>
+          ))}
         </div>
         <span className="text-xs text-white/25">{delivered.length} materiais entregues</span>
       </div>
@@ -1353,15 +1442,41 @@ function DeliveriesArchive({
           description="Os materiais aparecerão aqui quando a produtora liberar a entrega final."
         />
       ) : (
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
+        <div className="space-y-8">
           {months.map(([key, items]) => {
             const [year, month] = key.split("-");
             const label = new Intl.DateTimeFormat("pt-BR", {
               month: "long",
               timeZone: "UTC",
             }).format(new Date(`${year}-${month}-15T12:00:00Z`));
+            const projects = new Map<string, typeof items>();
+            items.forEach((item) => {
+              projects.set(item.projectId, [...(projects.get(item.projectId) || []), item]);
+            });
             return (
-              <ArchiveFolder key={key} title={`${label} ${year}`} items={items} accent={accent} />
+              <section key={key}>
+                <div className="mb-4 flex items-end justify-between gap-4 border-b border-white/[0.06] pb-3">
+                  <div>
+                    <p className="text-[9px] font-semibold uppercase tracking-[.16em] text-[var(--portal-accent)]">
+                      {year}
+                    </p>
+                    <h2 className="mt-1 text-lg font-semibold capitalize">{label}</h2>
+                  </div>
+                  <span className="text-[10px] text-white/25">
+                    {items.length} {items.length === 1 ? "material" : "materiais"}
+                  </span>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
+                  {[...projects.entries()].map(([projectId, projectItems]) => (
+                    <ArchiveFolder
+                      key={`${key}-${projectId}`}
+                      title={projectItems[0]?.project || "Projeto"}
+                      items={projectItems}
+                      accent={accent}
+                    />
+                  ))}
+                </div>
+              </section>
             );
           })}
         </div>
@@ -1386,9 +1501,8 @@ function ArchiveFolder({
   items: Array<PortalDeliverable & { project: string }>;
   accent: string;
 }) {
-  const firstUrl = items.find((item) => item.url)?.url;
-  const content = (
-    <>
+  return (
+    <article className="portal-folder-card rounded-3xl border border-white/[0.08] bg-white/[0.025] p-5 transition hover:-translate-y-1 hover:border-[var(--portal-accent)]/30">
       <div className="portal-folder portal-folder-lime">
         <span />
       </div>
@@ -1396,25 +1510,33 @@ function ArchiveFolder({
       <p className="mt-1 text-xs text-white/32">
         {items.length} {items.length === 1 ? "arquivo" : "arquivos"}
       </p>
-      <div className="mt-6 flex items-center justify-between text-[9px] uppercase tracking-[.12em] text-white/22">
-        <span>{items[0]?.project}</span>
-        <Download className="size-3.5" style={{ color: accent }} />
+      <div className="mt-5 space-y-1 border-t border-white/[0.06] pt-3">
+        {items.map((item) =>
+          item.url ? (
+            <a
+              key={item.id}
+              href={item.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group/file flex min-h-9 items-center gap-2 rounded-lg px-2 text-[11px] text-white/40 transition hover:bg-white/[0.04] hover:text-white/75"
+            >
+              <span className="min-w-0 flex-1 truncate">{item.title}</span>
+              <Download
+                className="size-3.5 shrink-0 opacity-55 transition group-hover/file:opacity-100"
+                style={{ color: accent }}
+              />
+            </a>
+          ) : (
+            <div
+              key={item.id}
+              className="flex min-h-9 items-center rounded-lg px-2 text-[11px] text-white/22"
+            >
+              <span className="truncate">{item.title}</span>
+            </div>
+          ),
+        )}
       </div>
-    </>
-  );
-  return firstUrl ? (
-    <a
-      href={firstUrl}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="portal-folder-card rounded-3xl border border-white/[0.08] bg-white/[0.025] p-5 transition hover:-translate-y-1 hover:border-[var(--portal-accent)]/30"
-    >
-      {content}
-    </a>
-  ) : (
-    <div className="portal-folder-card rounded-3xl border border-white/[0.08] bg-white/[0.025] p-5">
-      {content}
-    </div>
+    </article>
   );
 }
 

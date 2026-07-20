@@ -109,7 +109,10 @@ function normalizePortalSnapshot(snapshot: ClientPortalSnapshot): ClientPortalSn
     projects: snapshot.projects.map((project) => ({
       ...project,
       deliverables: (project.deliverables ?? [])
-        .filter((deliverable) => String(deliverable.status) !== "archived")
+        .filter(
+          (deliverable) =>
+            !(String(deliverable.status) === "archived" && deliverable.kind !== "delivery"),
+        )
         .map((deliverable) => ({
           ...deliverable,
           kind: deliverable.kind === "delivery" ? "delivery" : "review",
