@@ -108,11 +108,13 @@ function normalizePortalSnapshot(snapshot: ClientPortalSnapshot): ClientPortalSn
     ...snapshot,
     projects: snapshot.projects.map((project) => ({
       ...project,
-      deliverables: (project.deliverables ?? []).map((deliverable) => ({
-        ...deliverable,
-        kind: deliverable.kind === "delivery" ? "delivery" : "review",
-        status: PORTAL_DELIVERABLE_STATUS_ALIASES[String(deliverable.status)] ?? "pendente",
-      })),
+      deliverables: (project.deliverables ?? [])
+        .filter((deliverable) => String(deliverable.status) !== "archived")
+        .map((deliverable) => ({
+          ...deliverable,
+          kind: deliverable.kind === "delivery" ? "delivery" : "review",
+          status: PORTAL_DELIVERABLE_STATUS_ALIASES[String(deliverable.status)] ?? "pendente",
+        })),
     })),
   };
 }

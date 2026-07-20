@@ -239,12 +239,40 @@ export async function publishClientDelivery(input: {
   return rowToReview(data);
 }
 
-export async function archiveClientReview(id: string): Promise<void> {
-  const { error } = await (supabase as any)
-    .from("portal_review_versions")
-    .update({ status: "archived" })
-    .eq("id", id);
+export async function removeClientReview(id: string): Promise<void> {
+  const { error } = await (supabase as any).from("portal_review_versions").delete().eq("id", id);
   if (error) throw error;
+}
+
+export async function updateClientReviewMetadata(input: {
+  id: string;
+  title: string;
+  contentCycle: string;
+  versionLabel: string;
+  message?: string;
+  dueAt?: string;
+}): Promise<ClientReview> {
+  const title = input.title.trim();
+  const contentCycle = input.contentCycle.trim();
+  if (!title) throw new Error("Informe o título do material");
+  if (!contentCycle) throw new Error("Informe o ciclo ou a competência do material");
+
+  const { data, error } = await (supabase as any)
+    .from("portal_review_versions")
+    .update({
+      title,
+      content_cycle: contentCycle,
+      version_label: input.versionLabel.trim() || "V1",
+      message: input.message?.trim() || null,
+      due_at: input.dueAt || null,
+    })
+    .eq("id", input.id)
+    .neq("status", "archived")
+    .select()
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) throw new Error("Este material não está mais disponível para edição");
+  return rowToReview(data);
 }
 
 export async function getClientPortalAccess(clientId?: string): Promise<ClientPortalAccess | null> {

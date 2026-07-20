@@ -358,7 +358,6 @@ begin
                   when 'pending' then 'revisao'
                   when 'changes_requested' then 'ajustes'
                   when 'approved' then 'aprovado'
-                  when 'archived' then 'entregue'
                   else 'pendente'
                 end,
                 'url', rv.drive_url,
@@ -377,7 +376,7 @@ begin
             )
             from public.portal_review_versions rv
             where rv.projeto_id = p.id
-              and rv.status <> 'draft'
+              and rv.status not in ('draft', 'archived')
           ), '[]'::jsonb)
         )
         order by p.portal_updated_at desc nulls last, p.criado_em desc

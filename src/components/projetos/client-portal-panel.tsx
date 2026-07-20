@@ -12,11 +12,13 @@ import {
   Loader2,
   MessageSquareText,
   PackageCheck,
+  Pencil,
   Plus,
   RefreshCcw,
   Send,
   Settings2,
   Sparkles,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -42,14 +44,15 @@ import { cn } from "@/lib/utils";
 import type { Projeto } from "@/lib/mock/projetos";
 import { DEFAULT_PORTAL_COVER_URL, portalDisplayProgress, portalSlug } from "@/lib/portal-cliente";
 import {
-  archiveClientReview,
   configureMakersMembers,
   getClientPortalAccess,
   getReviewEmbedUrl,
   listClientReviews,
   publishClientDelivery,
   publishClientReview,
+  removeClientReview,
   saveProjectClientPortalState,
+  updateClientReviewMetadata,
   type ClientPortalAccess,
   type ClientReview,
 } from "@/lib/client-reviews";
@@ -123,6 +126,8 @@ export function ClientPortalProjectPanel({
     open: boolean;
     thread?: ClientReview;
   }>({ open: false });
+  const [editingReview, setEditingReview] = useState<ClientReview | null>(null);
+  const [removingReview, setRemovingReview] = useState<ClientReview | null>(null);
   const [deliveryDialog, setDeliveryDialog] = useState(false);
   const [publicForm, setPublicForm] = useState({
     visible: project.portalVisible ?? false,
@@ -514,12 +519,9 @@ export function ClientPortalProjectPanel({
                   <ReviewRow
                     key={review.id}
                     review={review}
+                    onEdit={() => setEditingReview(review)}
                     onNewVersion={() => setReviewDialog({ open: true, thread: review })}
-                    onArchive={async () => {
-                      await archiveClientReview(review.id);
-                      toast.success("Revisão arquivada");
-                      await load();
-                    }}
+                    onRemove={() => setRemovingReview(review)}
                   />
                 ))}
               </div>
@@ -601,11 +603,7 @@ export function ClientPortalProjectPanel({
                       </Button>
                       <button
                         type="button"
-                        onClick={async () => {
-                          await archiveClientReview(delivery.id);
-                          toast.success("Entrega removida do portal");
-                          await load();
-                        }}
+                        onClick={() => setRemovingReview(delivery)}
                         className="px-2 text-[10px] text-muted-foreground hover:text-destructive"
                       >
                         Remover
@@ -639,6 +637,22 @@ export function ClientPortalProjectPanel({
             progress: portalDisplayProgress(current.progress, "aguardando_aprovacao"),
           }));
           setReviewDialog({ open: false });
+          await load();
+        }}
+      />
+      <EditReviewDialog
+        review={editingReview}
+        onClose={() => setEditingReview(null)}
+        onSaved={async () => {
+          setEditingReview(null);
+          await load();
+        }}
+      />
+      <RemoveReviewDialog
+        review={removingReview}
+        onClose={() => setRemovingReview(null)}
+        onRemoved={async () => {
+          setRemovingReview(null);
           await load();
         }}
       />
@@ -679,12 +693,14 @@ function ReviewMetric({ label, value, tone }: { label: string; value: number; to
 
 function ReviewRow({
   review,
+  onEdit,
   onNewVersion,
-  onArchive,
+  onRemove,
 }: {
   review: ClientReview;
+  onEdit: () => void;
   onNewVersion: () => void;
-  onArchive: () => void;
+  onRemove: () => void;
 }) {
   const status = REVIEW_STATUS[review.status];
   const StatusIcon = status.icon;
@@ -727,6 +743,9 @@ function ReviewRow({
               <ExternalLink className="size-3.5" /> Drive
             </a>
           </Button>
+          <Button variant="outline" size="sm" onClick={onEdit}>
+            <Pencil className="size-3.5" /> Editar
+          </Button>
           {(review.status === "changes_requested" || review.status === "approved") && (
             <Button variant="outline" size="sm" onClick={onNewVersion}>
               <RefreshCcw className="size-3.5" /> Nova versão
@@ -734,7 +753,7 @@ function ReviewRow({
           )}
           {review.status === "pending" && (
             <button
-              onClick={onArchive}
+              onClick={onRemove}
               className="px-2 text-[10px] text-muted-foreground hover:text-destructive"
             >
               Remover
@@ -743,6 +762,188 @@ function ReviewRow({
         </div>
       </div>
     </article>
+  );
+}
+
+function RemoveReviewDialog({
+  review,
+  onClose,
+  onRemoved,
+}: {
+  review: ClientReview | null;
+  onClose: () => void;
+  onRemoved: () => Promise<void>;
+}) {
+  const [removing, setRemoving] = useState(false);
+
+  const remove = async () => {
+    if (!review) return;
+    setRemoving(true);
+    try {
+      await removeClientReview(review.id);
+      await onRemoved();
+      toast.success(
+        review.kind === "delivery" ? "Entrega removida do portal" : "Material removido do portal",
+      );
+    } catch {
+      toast.error("Não foi possível remover este material");
+    } finally {
+      setRemoving(false);
+    }
+  };
+
+  return (
+    <Dialog open={Boolean(review)} onOpenChange={(open) => !open && !removing && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="font-display">Remover publicação?</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 text-sm text-muted-foreground">
+          <p>
+            <strong className="text-foreground">{review?.title}</strong> deixará de aparecer
+            imediatamente para o cliente.
+          </p>
+          <p className="rounded-xl border border-destructive/20 bg-destructive/[0.06] p-3 text-xs">
+            Esta ação remove a publicação e não pode ser desfeita. Para corrigir apenas o título,
+            a competência ou a mensagem, use <strong className="text-foreground">Editar</strong>.
+          </p>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={removing}>
+            Cancelar
+          </Button>
+          <Button variant="destructive" onClick={remove} disabled={removing}>
+            {removing ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+            Remover publicação
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function EditReviewDialog({
+  review,
+  onClose,
+  onSaved,
+}: {
+  review: ClientReview | null;
+  onClose: () => void;
+  onSaved: () => Promise<void>;
+}) {
+  const [title, setTitle] = useState("");
+  const [cycle, setCycle] = useState("");
+  const [version, setVersion] = useState("");
+  const [dueAt, setDueAt] = useState("");
+  const [message, setMessage] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!review) return;
+    setTitle(review.title);
+    setCycle(review.contentCycle ?? "");
+    setVersion(review.versionLabel);
+    setDueAt(review.dueAt ?? "");
+    setMessage(review.message ?? "");
+  }, [review]);
+
+  const save = async () => {
+    if (!review) return;
+    setSaving(true);
+    try {
+      await updateClientReviewMetadata({
+        id: review.id,
+        title,
+        contentCycle: cycle,
+        versionLabel: version,
+        message,
+        dueAt: dueAt ? new Date(dueAt).toISOString() : undefined,
+      });
+      await onSaved();
+      toast.success("Material atualizado no portal");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Não foi possível atualizar o material",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={Boolean(review)} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-xl">
+        <DialogHeader>
+          <DialogTitle className="font-display">Editar material publicado</DialogTitle>
+        </DialogHeader>
+
+        <div className="rounded-xl border border-primary/20 bg-primary/[0.05] p-3 text-[10px] leading-4 text-muted-foreground">
+          Edite as informações exibidas ao cliente sem perder o link, a decisão ou o histórico da
+          aprovação.
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="space-y-1.5 sm:col-span-2">
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+              Título do material
+            </span>
+            <Input
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              placeholder="Ex.: Reel 03 — Campanha de julho"
+              autoFocus
+            />
+          </label>
+          <label className="space-y-1.5">
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+              Ciclo ou competência
+            </span>
+            <Input
+              value={cycle}
+              onChange={(event) => setCycle(event.target.value)}
+              placeholder="Ex.: Julho de 2026"
+            />
+          </label>
+          <label className="space-y-1.5">
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+              Versão
+            </span>
+            <Input
+              value={version}
+              onChange={(event) => setVersion(event.target.value)}
+              placeholder="V1"
+            />
+          </label>
+          <label className="space-y-1.5 sm:col-span-2">
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+              Aprovar até
+            </span>
+            <DateTimePicker value={dueAt} onChange={setDueAt} placeholder="Escolher prazo" />
+          </label>
+          <label className="space-y-1.5 sm:col-span-2">
+            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+              Mensagem para o cliente
+            </span>
+            <Textarea
+              value={message}
+              onChange={(event) => setMessage(event.target.value)}
+              rows={3}
+              placeholder="Contexto ou orientação para a revisão."
+            />
+          </label>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button onClick={save} disabled={saving || !title.trim() || !cycle.trim()}>
+            {saving ? <Loader2 className="size-4 animate-spin" /> : <Pencil className="size-4" />}
+            Salvar alterações
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
