@@ -281,6 +281,16 @@ export const comercial = {
     setStore({ empresas: store.empresas.map(e => e.id === empresaId ? { ...e, ...patch } : e) });
   },
 
+  async removerEmpresa(empresaId: string) {
+    const { error } = await supabase.from("clientes_comercial").delete().eq("id", empresaId);
+    if (dbErro(error, "excluir empresa")) return false;
+    setStore({
+      empresas: store.empresas.filter((empresa) => empresa.id !== empresaId),
+      contatos: store.contatos.filter((contato) => contato.empresaId !== empresaId),
+    });
+    return true;
+  },
+
   // Cria um cliente direto (sem lead/contato) — usado pelo módulo Projetos,
   // onde o cliente já é conhecido e vira produção logo de cara.
   async criarCliente(input: { nome: string; accentColor?: string }) {

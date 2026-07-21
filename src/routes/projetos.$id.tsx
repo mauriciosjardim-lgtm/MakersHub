@@ -76,6 +76,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { useComercialSupa } from "@/lib/hooks/useComercial";
 import { comercial } from "@/lib/hooks/useComercial";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/projetos/$id")({ component: ProjetoDetalhe });
 
@@ -107,7 +108,7 @@ function ProjetoDetalhe() {
   const { id } = Route.useParams();
   const navigate = useNavigate();
   const { projetos, tarefas, marcos, entregaveis } = useProjetos();
-  const { empresas: crmClients } = useComercialSupa();
+  const { empresas: crmClients, leads: crmLeads } = useComercialSupa();
   const directProject = projetos.find((p) => p.id === id);
   const clientRecord =
     crmClients.find((client) => client.id === id) ??
@@ -247,8 +248,11 @@ function ProjetoDetalhe() {
       <EditarClienteDialog
         open={editandoCliente}
         onClose={() => setEditandoCliente(false)}
+        onDeleted={() => navigate({ to: "/projetos" })}
         nomeAtual={clientName}
         clientId={clientRecord?.id}
+        quantidadeProjetos={projetosDoCliente.length}
+        quantidadeOportunidades={clientRecord ? crmLeads.filter((lead) => lead.empresaId === clientRecord.id).length : 0}
       />
     </div>
   );
@@ -257,17 +261,31 @@ function ProjetoDetalhe() {
 function EditarClienteDialog({
   open,
   onClose,
+  onDeleted,
   nomeAtual,
   clientId,
+  quantidadeProjetos,
+  quantidadeOportunidades,
 }: {
   open: boolean;
   onClose: () => void;
+  onDeleted: () => void;
   nomeAtual: string;
   clientId?: string;
+  quantidadeProjetos: number;
+  quantidadeOportunidades: number;
 }) {
   const [nome, setNome] = useState(nomeAtual);
+  const [confirmandoExclusao, setConfirmandoExclusao] = useState(false);
+  const [confirmacao, setConfirmacao] = useState("");
+  const [excluindo, setExcluindo] = useState(false);
+  const possuiVinculos = quantidadeProjetos > 0 || quantidadeOportunidades > 0;
   useEffect(() => {
-    if (open) setNome(nomeAtual);
+    if (open) {
+      setNome(nomeAtual);
+      setConfirmandoExclusao(false);
+      setConfirmacao("");
+    }
   }, [open, nomeAtual]);
   const salvar = async () => {
     await Promise.all([
@@ -276,31 +294,103 @@ function EditarClienteDialog({
     ]);
     onClose();
   };
+  const excluir = async () => {
+    if (!clientId || possuiVinculos || confirmacao.trim() !== nomeAtual) return;
+    setExcluindo(true);
+    const removida = await comercial.removerEmpresa(clientId);
+    setExcluindo(false);
+    if (!removida) return;
+    toast.success("Empresa excluída");
+    onClose();
+    onDeleted();
+  };
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle className="font-display">Editar cliente</DialogTitle>
+          <DialogTitle className="font-display">
+            {confirmandoExclusao ? "Excluir empresa" : "Editar cliente"}
+          </DialogTitle>
         </DialogHeader>
-        <div className="space-y-1.5">
-          <p className="text-[11px] text-muted-foreground">
-            Renomeia este cliente em todos os projetos vinculados a ele.
-          </p>
-          <Input
-            value={nome}
-            onChange={(e) => setNome(e.target.value)}
-            placeholder="Nome do cliente"
-            autoFocus
-          />
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Cancelar
-          </Button>
-          <Button onClick={salvar} disabled={!nome.trim() || nome.trim() === nomeAtual}>
-            Salvar
-          </Button>
-        </DialogFooter>
+        {confirmandoExclusao ? (
+          <>
+            <div className="space-y-4">
+              <div className="rounded-xl border border-destructive/35 bg-destructive/[.07] p-3 text-xs leading-5 text-muted-foreground">
+                Esta ação remove definitivamente o cadastro da empresa e seus contatos. Ela não
+                poderá ser desfeita.
+              </div>
+              <label className="space-y-1.5">
+                <span className="text-[11px] text-muted-foreground">
+                  Digite <strong className="text-foreground">{nomeAtual}</strong> para confirmar.
+                </span>
+                <Input
+                  value={confirmacao}
+                  onChange={(event) => setConfirmacao(event.target.value)}
+                  placeholder={nomeAtual}
+                  autoFocus
+                />
+              </label>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setConfirmandoExclusao(false)} disabled={excluindo}>
+                Voltar
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={excluir}
+                disabled={excluindo || confirmacao.trim() !== nomeAtual}
+              >
+                <Trash size={15} color="currentColor" variant="Linear" />
+                {excluindo ? "Excluindo…" : "Excluir definitivamente"}
+              </Button>
+            </DialogFooter>
+          </>
+        ) : (
+          <>
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <p className="text-[11px] text-muted-foreground">
+                  Renomeia este cliente em todos os projetos vinculados a ele.
+                </p>
+                <Input
+                  value={nome}
+                  onChange={(e) => setNome(e.target.value)}
+                  placeholder="Nome do cliente"
+                  autoFocus
+                />
+              </div>
+              <div className="rounded-xl border border-destructive/20 bg-destructive/[.035] p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold text-destructive">Excluir empresa</p>
+                    <p className="mt-1 text-[10px] leading-4 text-muted-foreground">
+                      {possuiVinculos
+                        ? `Bloqueado: ${quantidadeProjetos} projeto(s) e ${quantidadeOportunidades} oportunidade(s) vinculada(s).`
+                        : "Remove o cadastro e os contatos desta empresa."}
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    onClick={() => setConfirmandoExclusao(true)}
+                    disabled={!clientId || possuiVinculos}
+                  >
+                    <Trash size={14} color="currentColor" variant="Linear" /> Excluir
+                  </Button>
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={onClose}>
+                Cancelar
+              </Button>
+              <Button onClick={salvar} disabled={!nome.trim() || nome.trim() === nomeAtual}>
+                Salvar
+              </Button>
+            </DialogFooter>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );
