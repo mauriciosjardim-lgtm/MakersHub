@@ -207,6 +207,17 @@ body {
   overflow-x: clip;
 }
 
+/* Barra de progresso ligada ao contexto visual atual (cliente ou marca). */
+.client-progress-gradient {
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklch, var(--progress-accent, var(--primary)) 24%, transparent) 0%,
+    color-mix(in oklch, var(--progress-accent, var(--primary)) 68%, transparent) 56%,
+    var(--progress-accent, var(--primary)) 100%
+  );
+  box-shadow: 0 0 12px color-mix(in oklch, var(--progress-accent, var(--primary)) 30%, transparent);
+}
+
 @layer base {
   *, *::before, *::after {
     border-color: var(--color-border);

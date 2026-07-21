@@ -117,8 +117,13 @@ export const FASE_ESTILOS: Record<string, { label: string; classe: string }> = {
   entrega:      { label: "Entrega",       classe: "border-success/40 bg-success/10 text-success" },
   concluida:    { label: "Concluída",     classe: "border-muted-foreground/30 bg-muted/20 text-muted-foreground" },
 };
+export const formatarNomeFase = (fase: string) => {
+  const nome = fase.replaceAll("_", " ").trim();
+  return nome ? nome.charAt(0).toLocaleUpperCase("pt-BR") + nome.slice(1) : fase;
+};
+
 export const getFaseInfo = (fase: string) =>
-  FASE_ESTILOS[fase] ?? { label: fase, classe: "border-border bg-surface-2 text-muted-foreground" };
+  FASE_ESTILOS[fase] ?? { label: formatarNomeFase(fase), classe: "border-border bg-surface-2 text-muted-foreground" };
 
 // Mantido por compatibilidade com tarefa-modal
 export const STATUS_TAREFA = FASE_ESTILOS;

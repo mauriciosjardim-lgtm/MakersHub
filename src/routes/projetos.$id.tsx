@@ -70,7 +70,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { format, formatDistanceToNow } from "date-fns";
+import { format, formatDistanceToNow, isSameDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
@@ -154,83 +154,89 @@ function ProjetoDetalhe() {
   const cor = clientRecord?.accentColor ?? corCliente(clientName);
 
   return (
-    <div className="space-y-4">
+    <div
+      className="space-y-3"
+      style={{ "--cliente": cor, "--progress-accent": cor } as React.CSSProperties}
+    >
       <Link
         to="/projetos"
-        className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-primary"
+        className="sticky top-2 z-30 inline-flex h-9 w-fit items-center gap-2 rounded-xl border border-border/70 bg-background/85 px-3 text-[11px] font-medium text-muted-foreground shadow-[0_10px_30px_-18px_rgba(0,0,0,.9)] backdrop-blur-xl transition hover:border-primary/35 hover:bg-surface-1 hover:text-primary"
       >
-        <ArrowLeft2 size={12} color="currentColor" variant="Linear" /> Todos os projetos
+        <span className="grid size-5 place-items-center rounded-md bg-surface-2">
+          <ArrowLeft2 size={12} color="currentColor" variant="Linear" />
+        </span>
+        Voltar para projetos
       </Link>
 
-      {/* Cabeçalho do workspace do cliente */}
-      <header
-        style={{ "--cliente": cor } as React.CSSProperties}
-        className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface-1/40 p-4"
+      {/* Cliente e troca de projetos em uma única faixa compacta */}
+      <section
+        className="flex flex-wrap items-stretch overflow-hidden rounded-2xl border border-border/70 bg-surface-1/30"
       >
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[color-mix(in_srgb,var(--cliente)_16%,transparent)] text-sm font-bold text-[var(--cliente)]">
+        <div className="flex min-w-[190px] items-center gap-3 border-b border-border/60 px-3 py-2.5 sm:border-b-0 sm:border-r">
+          <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-[color-mix(in_srgb,var(--cliente)_16%,transparent)] text-xs font-bold text-[var(--cliente)]">
             {iniciais(clientName)}
           </span>
           <div className="min-w-0">
-            <h2 className="truncate font-display text-lg font-semibold">{clientName}</h2>
-            <p className="text-[11px] text-muted-foreground">
+            <h2 className="truncate font-display text-sm font-semibold">{clientName}</h2>
+            <p className="text-[10px] text-muted-foreground">
               {projetosDoCliente.length} projeto{projetosDoCliente.length === 1 ? "" : "s"} cadastrado
               {projetosDoCliente.length === 1 ? "" : "s"}
             </p>
           </div>
         </div>
-        <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">
-          <Button variant="outline" size="sm" onClick={() => setEditandoCliente(true)}>
-            <Edit2 size={14} color="currentColor" variant="Linear" /> Editar cliente
-          </Button>
-          <Button size="sm" onClick={() => setNovoProjeto(true)}>
-            <Add size={14} color="currentColor" variant="Linear" /> Novo projeto
-          </Button>
-        </div>
-      </header>
-
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
-        <aside className="space-y-2 lg:sticky lg:top-4 lg:self-start">
-          <p className="px-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Projetos do cliente
-          </p>
-          <div className="space-y-1.5">
-            {projetosDoCliente.map((p) => (
+        <div className="flex min-w-0 flex-1 gap-1.5 overflow-x-auto p-2">
+          {projetosDoCliente.map((p) => {
+            const resumo = calcularResumoProgresso(p, tarefas);
+            return (
               <button
                 key={p.id}
                 onClick={() => navigate({ to: "/projetos/$id", params: { id: p.id } })}
                 className={cn(
-                  "w-full rounded-lg border p-2.5 text-left text-xs transition",
+                  "relative min-w-[190px] rounded-xl border px-3 py-2 text-left transition",
                   p.id === projeto?.id
-                    ? "border-primary/50 bg-primary/5"
-                    : "border-border/60 bg-surface-1/30 hover:border-border",
+                    ? "border-primary/40 bg-primary/[.07]"
+                    : "border-transparent text-muted-foreground hover:border-border/60 hover:bg-surface-2/40 hover:text-foreground",
                   p.arquivado && "opacity-45 hover:opacity-75",
                 )}
               >
-                <p className="truncate font-medium">{p.nome}</p>
-                <p className="mt-0.5 text-[10px] text-muted-foreground">{FASES[p.fase].label}</p>
+                {p.id === projeto?.id && <span className="absolute inset-y-2 left-0 w-0.5 rounded-r bg-primary" />}
+                <p className="truncate text-xs font-semibold">{p.nome}</p>
+                <div className="mt-1.5 flex items-center justify-between gap-3 text-[9px]">
+                  <span>{p.arquivado ? "Fechado" : FASES[p.fase].label}</span>
+                  <span className="font-medium tabular-nums">{resumo.percentual}%</span>
+                </div>
               </button>
-            ))}
-          </div>
+            );
+          })}
           <button
             onClick={() => setNovoProjeto(true)}
-            className="flex w-full items-center justify-center gap-1 rounded-lg border border-dashed border-border/60 p-2 text-[10px] text-muted-foreground transition hover:border-primary/40 hover:text-primary"
+            className="flex min-w-[130px] items-center justify-center gap-1 rounded-xl border border-dashed border-border/60 px-3 text-[10px] font-medium text-muted-foreground transition hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
           >
-            <Add size={12} color="currentColor" variant="Linear" /> Criar outro projeto
+            <Add size={12} color="currentColor" variant="Linear" /> Novo projeto
           </button>
-        </aside>
+        </div>
+        <div className="flex items-center gap-1.5 border-t border-border/60 p-2 sm:border-l sm:border-t-0">
+          <button
+            type="button"
+            onClick={() => setEditandoCliente(true)}
+            className="grid size-9 place-items-center rounded-lg border border-border/60 text-muted-foreground transition hover:border-primary/30 hover:text-primary"
+            title="Editar cliente"
+          >
+            <Edit2 size={14} color="currentColor" variant="Linear" />
+          </button>
+        </div>
+      </section>
 
-        {projeto ? (
-          <ProjetoConteudo
-            projeto={projeto}
-            tarefas={tarefas}
-            marcos={marcos}
-            entregaveis={entregaveis}
-          />
-        ) : (
-          <EmptyClientWorkspace clientName={clientName} onCreate={() => setNovoProjeto(true)} />
-        )}
-      </div>
+      {projeto ? (
+        <ProjetoConteudo
+          projeto={projeto}
+          tarefas={tarefas}
+          marcos={marcos}
+          entregaveis={entregaveis}
+        />
+      ) : (
+        <EmptyClientWorkspace clientName={clientName} onCreate={() => setNovoProjeto(true)} />
+      )}
 
       <ProjetoModal
         open={novoProjeto}
@@ -341,7 +347,7 @@ function ProjetoConteudo({
   const podeVerValor = (usuario as any)?.role === "admin";
   const id = projeto.id;
   const [editandoProjeto, setEditandoProjeto] = useState(false);
-  const [tarefaModal, setTarefaModal] = useState<{ open: boolean; tarefa?: Tarefa | null }>({
+  const [tarefaModal, setTarefaModal] = useState<{ open: boolean; tarefa?: Tarefa | null; faseInicial?: string }>({
     open: false,
   });
   const [marcoModal, setMarcoModal] = useState<{ open: boolean; marco?: Marco | null }>({
@@ -360,120 +366,92 @@ function ProjetoConteudo({
   return (
     <div
       className={cn(
-        "min-w-0 space-y-4 transition-opacity",
+        "min-w-0 space-y-3 transition-opacity",
         projeto.arquivado && "opacity-60 hover:opacity-90",
       )}
     >
-      <header className="rounded-xl border border-border bg-surface-1/40 p-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-md border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
-                {projeto.arquivado ? "Projeto fechado" : "Workspace de produção"}
-              </span>
-              <span className="text-[10px] text-muted-foreground">
-                Iniciado{" "}
-                {formatDistanceToNow(new Date(projeto.dataInicio), {
-                  locale: ptBR,
-                  addSuffix: true,
-                })}
-              </span>
-            </div>
-            <h1 className="mt-2 font-display text-2xl font-semibold">{projeto.nome}</h1>
-            <p className="text-sm text-muted-foreground">{projeto.cliente}</p>
-            {projeto.descricao && (
-              <p className="mt-2 text-xs text-muted-foreground">{projeto.descricao}</p>
-            )}
+      <header className="flex flex-wrap items-start justify-between gap-4 px-1 py-1">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full border border-primary/25 bg-primary/10 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-wide text-primary">
+              {projeto.arquivado ? "Projeto fechado" : "Em produção"}
+            </span>
+            <span className="text-[10px] text-muted-foreground">
+              Iniciado {formatDistanceToNow(new Date(projeto.dataInicio), { locale: ptBR, addSuffix: true })}
+            </span>
           </div>
-          <div className="flex items-center gap-2">
-            {(projetoConcluido || projeto.arquivado) && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={async () => {
-                  const fechar = !projeto.arquivado;
-                  if (
-                    fechar &&
-                    !confirm(
-                      `Fechar o projeto "${projeto.nome}"? As informações continuarão disponíveis.`,
-                    )
-                  )
-                    return;
-                  await projetosActions.atualizarProjeto(projeto.id, { arquivado: fechar });
-                }}
-              >
-                {projeto.arquivado ? (
-                  <ArchiveRestore className="size-3.5" />
-                ) : (
-                  <Archive className="size-3.5" />
-                )}
-                {projeto.arquivado ? "Reabrir projeto" : "Fechar projeto"}
-              </Button>
-            )}
-            <Button variant="outline" size="sm" onClick={() => setEditandoProjeto(true)}>
-              <Edit2 size={14} color="currentColor" variant="Linear" /> Editar
+          <h1 className="mt-2 truncate font-display text-2xl font-semibold tracking-tight">{projeto.nome}</h1>
+          <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">
+            {projeto.cliente}{projeto.descricao ? ` · ${projeto.descricao}` : " · Workspace de produção"}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {(projetoConcluido || projeto.arquivado) && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                const fechar = !projeto.arquivado;
+                if (fechar && !confirm(`Fechar o projeto "${projeto.nome}"? As informações continuarão disponíveis.`)) return;
+                await projetosActions.atualizarProjeto(projeto.id, { arquivado: fechar });
+              }}
+            >
+              {projeto.arquivado ? <ArchiveRestore className="size-3.5" /> : <Archive className="size-3.5" />}
+              {projeto.arquivado ? "Reabrir" : "Fechar"}
             </Button>
-          </div>
+          )}
+          <Button variant="outline" size="sm" onClick={() => setEditandoProjeto(true)}>
+            <Edit2 size={14} color="currentColor" variant="Linear" /> Editar projeto
+          </Button>
         </div>
-
-        <div
-          className={cn(
-            "mt-4 grid grid-cols-2 gap-3",
-            podeVerValor ? "md:grid-cols-3" : "md:grid-cols-2",
-          )}
-        >
-          {projeto.dataEntrega && (
-            <StatCard
-              icon={Calendar}
-              label="Entrega geral"
-              valor={format(new Date(projeto.dataEntrega), "dd MMM yyyy", { locale: ptBR })}
-            />
-          )}
-          {podeVerValor && (
-            <StatCard
-              icon={DollarCircle}
-              label="Valor"
-              valor={`R$ ${projeto.valor.toLocaleString("pt-BR")}`}
-            />
-          )}
-          <StatCard
-            icon={Profile2User}
-            label="Equipe"
-            valor={`${projeto.equipe.length} pessoa${projeto.equipe.length === 1 ? "" : "s"}`}
-          />
-        </div>
-
-        <ResumoProgresso projeto={projeto} tarefas={minhasTarefas} />
       </header>
+
+      <section className={cn("grid overflow-hidden rounded-xl border border-border/70 bg-surface-1/30", podeVerValor ? "grid-cols-2 md:grid-cols-4" : "grid-cols-2 md:grid-cols-3")}>
+        <div className="col-span-2 border-b border-border/60 p-3 md:col-span-1 md:border-b-0 md:border-r">
+          <ResumoProgresso projeto={projeto} tarefas={minhasTarefas} />
+        </div>
+        {projeto.dataEntrega && (
+          <StatCard icon={Calendar} label="Prazo geral" valor={format(new Date(projeto.dataEntrega), "dd MMM yyyy", { locale: ptBR })} />
+        )}
+        {podeVerValor && <StatCard icon={DollarCircle} label="Valor" valor={`R$ ${projeto.valor.toLocaleString("pt-BR")}`} />}
+        <StatCard icon={Profile2User} label="Equipe" valor={`${projeto.equipe.length} pessoa${projeto.equipe.length === 1 ? "" : "s"}`} />
+      </section>
 
       <Tabs defaultValue="tarefas">
         <div className="max-w-full overflow-x-auto pb-1">
-          <TabsList className="w-max min-w-full justify-start">
-            <TabsTrigger value="tarefas">Tarefas ({minhasTarefas.length})</TabsTrigger>
-            <TabsTrigger value="entregaveis">Entregáveis ({meusEntregaveis.length})</TabsTrigger>
-            <TabsTrigger value="marcos">Marcos ({meusMarcos.length})</TabsTrigger>
-            <TabsTrigger value="cliente">Área do cliente</TabsTrigger>
-            <TabsTrigger value="info">Informações</TabsTrigger>
-            <TabsTrigger value="equipe">Equipe</TabsTrigger>
+          <TabsList className="h-auto w-max min-w-full justify-start rounded-none border-b border-border/60 bg-transparent p-0">
+            <TabsTrigger className="rounded-none border-b-2 border-transparent px-4 py-2.5 data-[state=active]:border-primary data-[state=active]:bg-transparent" value="tarefas">Fluxo de produção ({minhasTarefas.length})</TabsTrigger>
+            <TabsTrigger className="rounded-none border-b-2 border-transparent px-4 py-2.5 data-[state=active]:border-primary data-[state=active]:bg-transparent" value="entregaveis">Entregáveis ({meusEntregaveis.length})</TabsTrigger>
+            <TabsTrigger className="rounded-none border-b-2 border-transparent px-4 py-2.5 data-[state=active]:border-primary data-[state=active]:bg-transparent" value="marcos">Marcos ({meusMarcos.length})</TabsTrigger>
+            <TabsTrigger className="rounded-none border-b-2 border-transparent px-4 py-2.5 data-[state=active]:border-primary data-[state=active]:bg-transparent" value="cliente">Área do cliente</TabsTrigger>
+            <TabsTrigger className="rounded-none border-b-2 border-transparent px-4 py-2.5 data-[state=active]:border-primary data-[state=active]:bg-transparent" value="info">Informações</TabsTrigger>
+            <TabsTrigger className="rounded-none border-b-2 border-transparent px-4 py-2.5 data-[state=active]:border-primary data-[state=active]:bg-transparent" value="equipe">Equipe</TabsTrigger>
           </TabsList>
         </div>
 
         <TabsContent value="tarefas" className="mt-3">
-          <div className="mb-3 flex flex-wrap items-center gap-3">
-            <Button size="sm" onClick={() => setTarefaModal({ open: true })}>
-              <Add size={16} color="currentColor" variant="Linear" /> Nova tarefa
-            </Button>
-            <p className="text-xs text-muted-foreground">
-              Arraste entre colunas para mudar fase · clique no card para editar
-            </p>
-          </div>
-          <div className="overflow-x-auto">
-            <KanbanTarefas
-              tarefas={minhasTarefas}
-              projetoId={projeto.id}
-              fases={projeto.fases ?? []}
-              onEditar={(t) => setTarefaModal({ open: true, tarefa: t })}
-            />
+          <div className="grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_270px]">
+            <section className="min-w-0 overflow-hidden rounded-2xl border border-border/70 bg-surface-1/25 p-3">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-3 px-1">
+                <div>
+                  <h2 className="text-sm font-semibold">Fluxo de produção</h2>
+                  <p className="mt-0.5 text-[10px] text-muted-foreground">Arraste entre etapas ou clique no card para editar.</p>
+                </div>
+                <Button size="sm" onClick={() => setTarefaModal({ open: true })}>
+                  <Add size={15} color="currentColor" variant="Linear" /> Nova tarefa
+                </Button>
+              </div>
+              <div className="overflow-x-auto">
+                <KanbanTarefas
+                  tarefas={minhasTarefas}
+                  projetoId={projeto.id}
+                  fases={projeto.fases ?? []}
+                  onEditar={(t) => setTarefaModal({ open: true, tarefa: t })}
+                  onNovaTarefa={(faseInicial) => setTarefaModal({ open: true, faseInicial })}
+                />
+              </div>
+            </section>
+            <PainelOperacional projeto={projeto} tarefas={minhasTarefas} marcos={meusMarcos} />
           </div>
         </TabsContent>
 
@@ -561,13 +539,13 @@ function ProjetoConteudo({
         projetoId={projeto.id}
         tarefa={tarefaModal.tarefa}
         fases={projeto.fases ?? []}
-        faseInicial={
+        faseInicial={tarefaModal.faseInicial ?? (
           projeto.fase === "pre"
             ? "pre_producao"
             : projeto.fase === "concluido"
               ? "concluida"
               : projeto.fase
-        }
+        )}
       />
       <MarcoModal
         open={marcoModal.open}
@@ -597,11 +575,11 @@ function StatCard({
   extra?: React.ReactNode;
 }) {
   return (
-    <div className="rounded-lg border border-border/40 bg-surface-2/30 p-3">
+    <div className="border-b border-border/60 px-3 py-3 last:border-b-0 md:border-b-0 md:border-r md:last:border-r-0">
       <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
         <Icon size={12} color="currentColor" variant="Linear" className="text-primary" /> {label}
       </div>
-      <p className="mt-1 font-display text-sm font-semibold tabular-nums">{valor}</p>
+      <p className="mt-1.5 font-display text-sm font-semibold tabular-nums">{valor}</p>
       {extra}
     </div>
   );
@@ -615,11 +593,9 @@ function ResumoProgresso({ projeto, tarefas }: { projeto: Projeto; tarefas: Tare
     .sort((a, b) => +new Date(a.prazo!) - +new Date(b.prazo!))[0];
 
   return (
-    <div className="mt-3 rounded-lg border border-border/40 bg-surface-2/30 p-4">
+    <div>
       <div className="flex items-center justify-between">
-        <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
-          Avanço do fluxo
-        </span>
+        <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Progresso geral</span>
         <div className="flex items-center gap-2">
           <span
             className={cn("rounded-md border px-1.5 py-0.5 text-[10px] font-medium", saude.badge)}
@@ -629,8 +605,12 @@ function ResumoProgresso({ projeto, tarefas }: { projeto: Projeto; tarefas: Tare
           <span className="font-display text-sm font-semibold tabular-nums">{r.percentual}%</span>
         </div>
       </div>
-      <Progress value={r.percentual} indicatorClassName={saude.barra} className="mt-2 h-1.5" />
-      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+      <Progress
+        value={r.percentual}
+        indicatorClassName="client-progress-gradient"
+        className="mt-2 h-1.5 bg-white/[.06]"
+      />
+      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[9px] text-muted-foreground">
         <span>
           {r.concluidas} de {r.total} tarefas concluídas
         </span>
@@ -651,6 +631,66 @@ function ResumoProgresso({ projeto, tarefas }: { projeto: Projeto; tarefas: Tare
   );
 }
 
+function PainelOperacional({ projeto, tarefas, marcos }: { projeto: Projeto; tarefas: Tarefa[]; marcos: Marco[] }) {
+  const agenda = [
+    ...tarefas
+      .filter((t) => !t.concluida && t.prazo)
+      .map((t) => ({ id: `t-${t.id}`, titulo: t.titulo, data: t.prazo!, detalhe: t.responsavel })),
+    ...marcos
+      .filter((m) => m.status === "pendente")
+      .map((m) => ({ id: `m-${m.id}`, titulo: m.titulo, data: m.data, detalhe: "Marco do projeto" })),
+  ]
+    .sort((a, b) => +new Date(a.data) - +new Date(b.data))
+    .slice(0, 4);
+  const links = (projeto.links ?? [])
+    .map((link) => ({ ...link, seguro: linkSeguro(link.url) }))
+    .filter((link): link is typeof link & { seguro: NonNullable<ReturnType<typeof linkSeguro>> } => Boolean(link.seguro));
+
+  return (
+    <aside className="space-y-3">
+      <section className="rounded-2xl border border-border/70 bg-surface-1/25 p-4">
+        <h3 className="text-sm font-semibold">Próximos passos</h3>
+        <p className="mt-1 text-[10px] text-muted-foreground">Prazos e marcos que pedem atenção.</p>
+        <div className="mt-4">
+          {agenda.map((item, index) => (
+            <div key={item.id} className="relative pb-4 pl-5 last:pb-0">
+              {index < agenda.length - 1 && <span className="absolute bottom-0 left-[5px] top-3 w-px bg-border/70" />}
+              <span className={cn("absolute left-0 top-1 size-[11px] rounded-full border-2 border-background", index === 0 ? "bg-primary shadow-[0_0_12px_hsl(var(--primary)/.45)]" : "bg-muted-foreground/40")} />
+              <p className="text-[9px] font-medium uppercase tracking-wide text-muted-foreground">
+                {format(new Date(item.data), "dd MMM · HH:mm", { locale: ptBR })}
+              </p>
+              <p className="mt-1 text-xs font-medium leading-snug">{item.titulo}</p>
+              <p className="mt-1 text-[9px] text-muted-foreground">{item.detalhe}</p>
+            </div>
+          ))}
+          {!agenda.length && <p className="rounded-xl border border-dashed border-border/50 px-3 py-6 text-center text-[10px] text-muted-foreground">Nenhum prazo ou marco pendente.</p>}
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-border/70 bg-surface-1/25 p-4">
+        <h3 className="text-sm font-semibold">Acesso rápido</h3>
+        <p className="mt-1 text-[10px] text-muted-foreground">Links salvos neste projeto.</p>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          {links.slice(0, 4).map((link) => (
+            <a
+              key={link.id}
+              href={link.seguro.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="min-h-16 rounded-xl border border-border/60 bg-surface-2/30 p-2.5 transition hover:border-primary/35 hover:bg-primary/5"
+            >
+              <Link2 size={13} color="currentColor" variant="Linear" className="text-primary" />
+              <p className="mt-2 truncate text-[10px] font-semibold">{link.label}</p>
+              <p className="mt-0.5 truncate text-[8px] text-muted-foreground">{link.seguro.dominio}</p>
+            </a>
+          ))}
+        </div>
+        {!links.length && <p className="mt-3 rounded-xl border border-dashed border-border/50 px-3 py-4 text-center text-[9px] leading-relaxed text-muted-foreground">Adicione Drive, Frame.io ou briefing em Informações.</p>}
+      </section>
+    </aside>
+  );
+}
+
 const SUGESTOES_FASE = [
   "Aprovação interna",
   "Aprovação cliente",
@@ -667,11 +707,13 @@ function KanbanTarefas({
   projetoId,
   fases,
   onEditar,
+  onNovaTarefa,
 }: {
   tarefas: Tarefa[];
   projetoId: string;
   fases: string[];
   onEditar: (t: Tarefa) => void;
+  onNovaTarefa: (faseInicial: string) => void;
 }) {
   const [adicionando, setAdicionando] = useState(false);
   const [novaFase, setNovaFase] = useState("");
@@ -705,7 +747,7 @@ function KanbanTarefas({
       onDragStart={(e) => setDraggingId(String(e.active.id))}
       onDragEnd={handleDragEnd}
     >
-      <div className="flex gap-3 overflow-x-auto pb-3">
+      <div className="flex gap-3 overflow-x-auto pb-4">
         {fases.map((faseId, idx) => {
           const info = getFaseInfo(faseId);
           const items = tarefas.filter((t) => t.status === faseId);
@@ -725,6 +767,7 @@ function KanbanTarefas({
                   : undefined
               }
               count={items.length}
+              onNovaTarefa={() => onNovaTarefa(faseId)}
             >
               {items.map((t) => (
                 <TarefaCard
@@ -739,7 +782,7 @@ function KanbanTarefas({
         })}
 
         {/* botão nova coluna */}
-        <div className="min-w-[220px] flex-shrink-0">
+        <div className="min-w-[300px] flex-shrink-0">
           {!adicionando ? (
             <button
               onClick={() => setAdicionando(true)}
@@ -817,6 +860,7 @@ function KanbanColuna({
   onMover,
   onRemover,
   count,
+  onNovaTarefa,
   children,
 }: {
   faseId: string;
@@ -827,6 +871,7 @@ function KanbanColuna({
   onMover: (d: -1 | 1) => void;
   onRemover?: () => void;
   count: number;
+  onNovaTarefa: () => void;
   children: React.ReactNode;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: faseId });
@@ -834,12 +879,17 @@ function KanbanColuna({
     <div
       ref={setNodeRef}
       className={cn(
-        "min-w-[240px] w-[240px] flex-shrink-0 rounded-xl border bg-surface-1/40 p-3 transition",
-        isConcluida ? "border-muted-foreground/20" : "border-border",
-        isOver && "border-primary/50 bg-primary/5",
+        "relative min-h-[430px] min-w-[292px] w-[292px] flex-shrink-0 rounded-2xl p-1.5 transition duration-200",
+        isOver && "bg-primary/5",
       )}
     >
-      <div className="mb-2 flex items-center gap-1">
+      {podeDireita && (
+        <span
+          aria-hidden="true"
+          className="absolute -right-[7px] inset-y-1 w-px bg-gradient-to-b from-transparent via-border/80 to-transparent"
+        />
+      )}
+      <div className={cn("mb-3 flex h-11 items-center gap-1 rounded-xl border bg-surface-1/70 px-2.5 shadow-sm", isConcluida ? "border-muted-foreground/20" : "border-border/70", isOver && "border-primary/60")}>
         <button
           onClick={() => onMover(-1)}
           disabled={!podeEsquerda}
@@ -849,14 +899,14 @@ function KanbanColuna({
         </button>
         <h3
           className={cn(
-            "flex-1 truncate text-[11px] font-semibold uppercase tracking-wider",
+            "flex-1 truncate text-xs font-semibold uppercase tracking-[.12em]",
             isConcluida ? "text-muted-foreground/60" : "text-muted-foreground",
           )}
         >
           {label}
         </h3>
         {count > 0 && (
-          <span className="rounded-md bg-surface-2 px-1.5 py-0.5 text-[10px] tabular-nums text-muted-foreground">
+          <span className="grid size-6 place-items-center rounded-full bg-surface-2 text-[10px] font-medium tabular-nums text-muted-foreground">
             {count}
           </span>
         )}
@@ -877,13 +927,20 @@ function KanbanColuna({
           </button>
         )}
       </div>
-      <div className="space-y-2 min-h-[40px]">
+      <div className="min-h-[360px] space-y-3 px-0.5">
         {count === 0 && (
-          <p className="rounded-md border border-dashed border-border/30 p-3 text-center text-[10px] text-muted-foreground/40">
-            Arraste tarefas aqui
+          <p className="grid min-h-24 place-items-center rounded-xl border border-dashed border-border/30 px-4 text-center text-[10px] text-muted-foreground/40">
+            Arraste uma tarefa para esta etapa
           </p>
         )}
         {children}
+        <button
+          type="button"
+          onClick={onNovaTarefa}
+          className="flex h-9 w-full items-center justify-center gap-1.5 rounded-xl border border-transparent text-[11px] font-medium text-muted-foreground/60 transition hover:border-primary/25 hover:bg-primary/5 hover:text-primary"
+        >
+          <Add size={13} color="currentColor" variant="Linear" /> Nova tarefa
+        </button>
       </div>
     </div>
   );
@@ -903,6 +960,19 @@ function TarefaCard({
   const { attributes, listeners, setNodeRef, transform } = useDraggable({ id: tarefa.id });
   const prio = PRIORIDADES[tarefa.prioridade];
   const lk = linkSeguro(tarefa.link);
+  const prazo = tarefa.prazo ? new Date(tarefa.prazo) : null;
+  const atrasada = Boolean(prazo && !tarefa.concluida && prazo.getTime() < Date.now());
+  const prazoLabel = prazo
+    ? isSameDay(prazo, new Date())
+      ? `Hoje · ${format(prazo, "HH:mm")}`
+      : format(prazo, "dd MMM", { locale: ptBR })
+    : null;
+  const prioridadeVisual = {
+    baixa: { acento: "bg-muted-foreground/50", badge: "border-border/70 bg-surface-2 text-muted-foreground" },
+    media: { acento: "bg-info", badge: "border-info/25 bg-info/10 text-info" },
+    alta: { acento: "bg-amber-400", badge: "border-amber-400/25 bg-amber-400/10 text-amber-300" },
+    urgente: { acento: "bg-destructive", badge: "border-destructive/25 bg-destructive/10 text-destructive" },
+  }[tarefa.prioridade];
   const style =
     transform && !overlay
       ? { transform: `translate3d(${transform.x}px,${transform.y}px,0)` }
@@ -913,67 +983,69 @@ function TarefaCard({
       ref={setNodeRef}
       style={style}
       className={cn(
-        "group rounded-lg border border-border/60 bg-card p-2.5 transition",
+        "group relative min-h-[150px] overflow-hidden rounded-2xl border border-border/70 bg-gradient-to-br from-card via-card to-surface-2/40 p-4 pl-[18px] shadow-[0_12px_34px_-25px_rgba(0,0,0,.95)] transition duration-200",
         isDragging && !overlay && "opacity-40",
         overlay && "shadow-xl rotate-1 scale-105",
-        !isDragging && "hover:border-primary/40",
+        tarefa.concluida && "opacity-65",
+        !isDragging && "hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-[0_18px_40px_-24px_hsl(var(--primary)/.3)]",
       )}
     >
-      <div className="flex items-start gap-2">
-        {/* toggle concluída */}
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            projetosActions.atualizarTarefa(tarefa.id, { concluida: !tarefa.concluida });
-          }}
-          className="mt-0.5 shrink-0 transition hover:scale-110"
-          title={tarefa.concluida ? "Marcar como pendente" : "Marcar como concluída"}
-        >
-          {tarefa.concluida ? (
-            <TickCircle size={16} color="currentColor" variant="Linear" className="text-success" />
-          ) : (
-            <Circle className="size-4 text-muted-foreground hover:text-primary" />
-          )}
-        </button>
+      <span className={cn("absolute inset-y-0 left-0 w-[3px]", prioridadeVisual.acento)} />
+      <div className="flex items-center justify-between gap-2">
+        <span className={cn("rounded-full border px-2 py-1 text-[8px] font-bold uppercase tracking-[.1em]", prioridadeVisual.badge)}>
+          {prio.label}
+        </span>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              projetosActions.atualizarTarefa(tarefa.id, { concluida: !tarefa.concluida });
+            }}
+            className="grid size-7 place-items-center rounded-lg text-muted-foreground transition hover:bg-surface-2 hover:text-primary"
+            title={tarefa.concluida ? "Marcar como pendente" : "Marcar como concluída"}
+          >
+            {tarefa.concluida ? <TickCircle size={17} color="currentColor" variant="Bulk" className="text-success" /> : <Circle className="size-[17px]" />}
+          </button>
+          <button
+            {...listeners}
+            {...attributes}
+            className="grid size-7 shrink-0 cursor-grab touch-none place-items-center rounded-lg text-muted-foreground/40 opacity-0 transition group-hover:opacity-100 hover:bg-surface-2 hover:text-muted-foreground active:cursor-grabbing"
+            title="Arrastar para outra fase"
+          >
+            <svg className="size-3.5" viewBox="0 0 16 16" fill="currentColor">
+              <circle cx="5" cy="4" r="1.2" /><circle cx="5" cy="8" r="1.2" /><circle cx="5" cy="12" r="1.2" />
+              <circle cx="11" cy="4" r="1.2" /><circle cx="11" cy="8" r="1.2" /><circle cx="11" cy="12" r="1.2" />
+            </svg>
+          </button>
+        </div>
+      </div>
 
-        {/* clique no conteúdo abre o modal */}
-        <button onClick={onEditar} className="min-w-0 flex-1 text-left">
+      <button onClick={onEditar} className="mt-3 block w-full text-left">
           <p
             className={cn(
-              "text-xs font-medium leading-snug",
+              "text-[13px] font-semibold leading-snug tracking-[-.01em]",
               tarefa.concluida && "text-muted-foreground line-through",
             )}
           >
             {tarefa.titulo}
           </p>
-          <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[10px]">
-            <span className={cn("font-medium", prio.classe)}>● {prio.label}</span>
-            <span className="text-muted-foreground">{tarefa.responsavel}</span>
-            {tarefa.prazo && (
-              <span className="ml-auto inline-flex items-center gap-0.5 tabular-nums text-muted-foreground">
-                <Calendar size={10} color="currentColor" variant="Linear" />
-                {format(new Date(tarefa.prazo), "dd MMM", { locale: ptBR })}
-              </span>
-            )}
-          </div>
-        </button>
+          {tarefa.descricao && (
+            <p className="mt-2 line-clamp-2 text-[10px] leading-[1.55] text-muted-foreground">
+              {tarefa.descricao}
+            </p>
+          )}
+      </button>
 
-        {/* handle de drag */}
-        <button
-          {...listeners}
-          {...attributes}
-          className="mt-0.5 shrink-0 cursor-grab touch-none opacity-0 transition group-hover:opacity-100 active:cursor-grabbing"
-          title="Arrastar para outra fase"
-        >
-          <svg className="size-3.5 text-muted-foreground" viewBox="0 0 16 16" fill="currentColor">
-            <circle cx="5" cy="4" r="1.2" />
-            <circle cx="5" cy="8" r="1.2" />
-            <circle cx="5" cy="12" r="1.2" />
-            <circle cx="11" cy="4" r="1.2" />
-            <circle cx="11" cy="8" r="1.2" />
-            <circle cx="11" cy="12" r="1.2" />
-          </svg>
-        </button>
+      <div className="mt-4 flex items-center gap-2 border-t border-border/50 pt-3">
+        <span className="grid size-6 shrink-0 place-items-center rounded-full bg-primary/12 text-[8px] font-bold text-primary ring-1 ring-primary/20">
+          {iniciais(tarefa.responsavel)}
+        </span>
+        <span className="min-w-0 flex-1 truncate text-[9px] font-medium text-muted-foreground">{tarefa.responsavel}</span>
+        {prazoLabel && (
+          <span className={cn("inline-flex items-center gap-1 whitespace-nowrap text-[9px] font-medium tabular-nums", atrasada ? "text-destructive" : "text-muted-foreground")}>
+            <Calendar size={11} color="currentColor" variant="Linear" /> {prazoLabel}
+          </span>
+        )}
       </div>
 
       {lk && (
@@ -983,7 +1055,7 @@ function TarefaCard({
           rel="noopener noreferrer"
           onClick={(e) => e.stopPropagation()}
           onPointerDown={(e) => e.stopPropagation()}
-          className="mt-2 inline-flex max-w-full items-center gap-1 rounded-md border border-border/40 bg-surface-2/40 px-1.5 py-0.5 text-[10px] text-muted-foreground transition hover:border-primary/40 hover:text-primary"
+          className="mt-2 inline-flex max-w-full items-center gap-1 rounded-md border border-border/40 bg-surface-2/40 px-1.5 py-0.5 text-[9px] text-muted-foreground transition hover:border-primary/40 hover:text-primary"
           title={lk.href}
         >
           <Link2 size={10} color="currentColor" variant="Linear" className="shrink-0" />
