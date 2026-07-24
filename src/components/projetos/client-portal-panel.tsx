@@ -40,6 +40,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { parseClientAdjustmentFeedback } from "@/lib/client-adjustments";
 import { cn } from "@/lib/utils";
 import type { Projeto } from "@/lib/mock/projetos";
 import { DEFAULT_PORTAL_COVER_URL, portalDisplayProgress, portalSlug } from "@/lib/portal-cliente";
@@ -764,11 +765,7 @@ function ReviewRow({
           {review.message && (
             <p className="mt-1 line-clamp-1 text-[10px] text-muted-foreground">{review.message}</p>
           )}
-          {review.clientFeedback && (
-            <p className="mt-2 rounded-lg border border-destructive/20 bg-destructive/[0.06] px-2.5 py-2 text-[10px] text-destructive">
-              “{review.clientFeedback}”
-            </p>
-          )}
+          {review.clientFeedback && <ClientFeedbackPanel feedback={review.clientFeedback} />}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span
@@ -805,6 +802,64 @@ function ReviewRow({
         </div>
       </div>
     </article>
+  );
+}
+
+function ClientFeedbackPanel({ feedback }: { feedback: string }) {
+  const points = parseClientAdjustmentFeedback(feedback);
+
+  return (
+    <section className="mt-3 overflow-hidden rounded-xl border border-warning/20 bg-warning/[0.035]">
+      <div className="flex items-center justify-between gap-3 border-b border-warning/15 px-3 py-2.5">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-warning/10 text-warning">
+            <MessageSquareText className="size-3.5" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-[10px] font-semibold text-foreground">Ajustes do cliente</p>
+            <p className="text-[8px] uppercase tracking-[.12em] text-muted-foreground">
+              Retorno recebido para esta versão
+            </p>
+          </div>
+        </div>
+        {points && (
+          <span className="shrink-0 rounded-full border border-warning/15 bg-warning/[0.06] px-2 py-1 text-[8px] font-medium uppercase tracking-[.1em] text-warning">
+            {points.length} {points.length === 1 ? "ponto" : "pontos"}
+          </span>
+        )}
+      </div>
+
+      {points ? (
+        <ol className="divide-y divide-border/50">
+          {points.map((point, index) => (
+            <li
+              key={`${point.time || "geral"}-${index}`}
+              className="grid gap-2 px-3 py-3 sm:grid-cols-[28px_70px_minmax(0,1fr)] sm:items-start"
+            >
+              <span className="grid size-7 place-items-center rounded-lg bg-surface-2 text-[9px] font-semibold tabular-nums text-muted-foreground">
+                {String(index + 1).padStart(2, "0")}
+              </span>
+              <span
+                className={cn(
+                  "inline-flex h-7 w-fit items-center gap-1 rounded-lg border px-2 text-[9px] font-medium tabular-nums",
+                  point.time
+                    ? "border-warning/20 bg-warning/[0.06] text-warning"
+                    : "border-border/70 bg-surface-2/50 text-muted-foreground",
+                )}
+              >
+                {point.time ? <Clock3 className="size-3" /> : null}
+                {point.time || "Geral"}
+              </span>
+              <p className="min-w-0 text-xs leading-5 text-foreground/85">{point.change}</p>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className="whitespace-pre-wrap px-3 py-3 text-xs leading-5 text-foreground/80">
+          {feedback}
+        </p>
+      )}
+    </section>
   );
 }
 

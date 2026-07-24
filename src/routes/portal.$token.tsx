@@ -1,7 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import {
-  CalendarClock,
   Check,
   CheckCircle2,
   ChevronRight,
@@ -18,8 +17,10 @@ import {
   MessageSquareText,
   Milestone,
   PlayCircle,
+  Plus,
   RotateCcw,
   AlertTriangle,
+  Trash2,
 } from "lucide-react";
 import {
   DocumentText1,
@@ -55,6 +56,11 @@ import {
 } from "@/lib/portal-cliente";
 import { portalSupabase } from "@/lib/portal-supabase";
 import { cn } from "@/lib/utils";
+import {
+  isValidClientAdjustmentTimecode,
+  maskClientAdjustmentTimecode,
+  normalizeClientAdjustmentTimecode,
+} from "@/lib/client-adjustments";
 
 export const Route = createFileRoute("/portal/$token")({
   ssr: false,
@@ -1217,7 +1223,7 @@ function ApprovalsView({
             description="Você está em dia com a equipe."
           />
         ) : (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="space-y-4">
             {pending.map((item, index) => (
               <ApprovalCard
                 key={item.id}
@@ -1293,7 +1299,9 @@ function ApprovalCard({
   cover?: string | null;
 }) {
   const [requestingChanges, setRequestingChanges] = useState(false);
-  const [feedback, setFeedback] = useState("");
+  const [adjustmentPoints, setAdjustmentPoints] = useState([
+    { id: "initial", time: "", change: "" },
+  ]);
   const [confirmingApproval, setConfirmingApproval] = useState(false);
   const [previewReady, setPreviewReady] = useState(false);
   const [previewSlow, setPreviewSlow] = useState(false);
@@ -1316,13 +1324,45 @@ function ApprovalCard({
   }, [item.embed_url, previewReady, previewRequested]);
 
   const requestChanges = async () => {
-    if (!feedback.trim() || approving) return;
-    const success = await onRespond(item, "changes_requested", feedback.trim());
+    const validPoints = adjustmentPoints.filter((point) => point.change.trim());
+    const hasInvalidTime = validPoints.some(
+      (point) => point.time.trim() && !isValidClientAdjustmentTimecode(point.time),
+    );
+    if (validPoints.length === 0 || hasInvalidTime || approving) return;
+    const feedback = [
+      "AJUSTES SOLICITADOS",
+      ...validPoints.map(
+        (point, index) => `${index + 1}. [${point.time.trim() || "Geral"}] ${point.change.trim()}`,
+      ),
+    ].join("\n");
+    const success = await onRespond(item, "changes_requested", feedback);
     if (success) {
-      setFeedback("");
+      setAdjustmentPoints([{ id: "initial", time: "", change: "" }]);
       setRequestingChanges(false);
     }
   };
+
+  const updateAdjustmentPoint = (id: string, field: "time" | "change", value: string) => {
+    setAdjustmentPoints((current) =>
+      current.map((point) => (point.id === id ? { ...point, [field]: value } : point)),
+    );
+  };
+
+  const addAdjustmentPoint = () => {
+    setAdjustmentPoints((current) => [
+      ...current,
+      { id: `point-${Date.now()}-${current.length}`, time: "", change: "" },
+    ]);
+  };
+
+  const removeAdjustmentPoint = (id: string) => {
+    setAdjustmentPoints((current) => current.filter((point) => point.id !== id));
+  };
+
+  const hasAdjustment = adjustmentPoints.some((point) => point.change.trim());
+  const hasInvalidAdjustmentTime = adjustmentPoints.some(
+    (point) => point.time.trim() && !isValidClientAdjustmentTimecode(point.time),
+  );
 
   const approve = async () => {
     if (approving) return;
@@ -1332,10 +1372,10 @@ function ApprovalCard({
 
   return (
     <article
-      className="group overflow-hidden rounded-3xl border border-white/[0.09] bg-white/[0.025] transition hover:border-[var(--portal-accent)]/25"
+      className="group grid overflow-hidden rounded-3xl border border-white/[0.09] bg-white/[0.025] transition hover:border-[var(--portal-accent)]/25 lg:grid-cols-[minmax(360px,.95fr)_minmax(0,1.05fr)]"
       aria-busy={approving}
     >
-      <div className="relative aspect-video w-full overflow-hidden bg-black">
+      <div className="relative aspect-video w-full overflow-hidden bg-black lg:self-start">
         {poster ? (
           <img
             src={poster}
@@ -1439,44 +1479,196 @@ function ApprovalCard({
           </a>
         )}
       </div>
-      <div className="p-4 sm:p-5">
-        <div className="flex flex-wrap items-center gap-2 text-[9px] uppercase tracking-[.12em] text-white/42">
-          {item.content_cycle && <span>{item.content_cycle}</span>}
-          {item.due_at && (
-            <span className="inline-flex items-center gap-1">
-              <CalendarClock className="size-3" /> Aprovar até {formatDate(item.due_at)}
-            </span>
-          )}
+      <div className="flex h-full min-w-0 flex-col justify-between p-5 sm:p-6 lg:p-8">
+        <div>
+          <div className="flex items-center gap-2 text-[9px] font-medium uppercase tracking-[.18em] text-[var(--portal-accent)]">
+            <span className="size-1.5 rounded-full bg-[var(--portal-accent)]" />
+            Material para aprovação
+          </div>
+          <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-2 text-[9px] uppercase tracking-[.13em] text-white/38">
+            {item.content_cycle && <span>{item.content_cycle}</span>}
+            {item.due_at && (
+              <>
+                {item.content_cycle && <span className="size-0.5 rounded-full bg-white/20" />}
+                <span>Aprovar até {formatDate(item.due_at)}</span>
+              </>
+            )}
+          </div>
+          <h3 className="mt-2 max-w-2xl text-xl font-semibold leading-7 tracking-[-.035em] sm:text-2xl">
+            {item.title}
+          </h3>
+          {item.notes && <p className="mt-2 text-xs leading-5 text-white/55">{item.notes}</p>}
         </div>
-        <h3 className="mt-1 text-base font-semibold leading-5 tracking-[-.02em]">{item.title}</h3>
-        {item.notes && <p className="mt-2 text-xs leading-5 text-white/55">{item.notes}</p>}
         {requestingChanges ? (
-          <div className="mt-5 rounded-2xl border border-white/[0.08] bg-black/20 p-3">
-            <label className="text-[10px] uppercase tracking-[.13em] text-white/35">
-              O que precisa mudar?
-            </label>
-            <textarea
-              value={feedback}
-              onChange={(event) => setFeedback(event.target.value)}
-              rows={3}
-              autoFocus
-              placeholder="Ex.: trocar a cena de 00:08 e reduzir o tamanho do logo..."
-              className="mt-2 w-full resize-none rounded-xl border border-white/10 bg-white/[0.03] p-3 text-xs text-white outline-none placeholder:text-white/20 focus:border-[var(--portal-accent)]/35"
-            />
-            <div className="mt-2 flex gap-2">
+          <div className="mt-8 border-l-2 border-[var(--portal-accent)] pl-4">
+            <p className="text-xs font-medium text-white/80">Quadro de ajustes aberto</p>
+            <p className="mt-1 text-[11px] leading-5 text-white/38">
+              Revise o vídeo e organize cada alteração no quadro abaixo.
+            </p>
+          </div>
+        ) : (
+          <div className="mt-8">
+            <div className="mb-3">
+              <p className="text-xs font-medium text-white/70">Registre sua decisão</p>
+              <p className="mt-1 text-[11px] leading-4 text-white/35">
+                Aprove o material ou indique pontos objetivos para a equipe.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setRequestingChanges(true)}
+                disabled={approving}
+                className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-white/10 px-3 text-xs font-medium text-white/55 transition hover:bg-white/[0.05] hover:text-white"
+              >
+                <MessageSquareText className="size-3.5" /> Solicitar ajustes
+              </button>
+              <button
+                type="button"
+                disabled={approving}
+                onClick={() => setConfirmingApproval(true)}
+                className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl px-4 text-xs font-semibold text-black shadow-[0_8px_20px_-14px_var(--portal-accent)] transition hover:brightness-105 disabled:opacity-50"
+                style={{ backgroundColor: accent }}
+              >
+                {approving ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Check className="size-3.5" />
+                )}{" "}
+                Aprovar
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+      {requestingChanges && (
+        <section className="border-t border-white/[0.08] bg-black/20 p-4 sm:p-6 lg:col-span-2 lg:p-8">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex min-w-0 items-start gap-3">
+              <span className="grid size-10 shrink-0 place-items-center rounded-xl border border-[var(--portal-accent)]/20 bg-[var(--portal-accent)]/[0.07] text-[var(--portal-accent)]">
+                <MessageSquareText className="size-4" />
+              </span>
+              <div>
+                <p className="text-sm font-semibold tracking-[-.01em] text-white">
+                  Quadro de ajustes
+                </p>
+                <p className="mt-1 text-[11px] leading-5 text-white/40">
+                  Um ponto por alteração. O tempo é opcional para ajustes gerais.
+                </p>
+              </div>
+            </div>
+            <span className="shrink-0 rounded-full border border-white/[0.07] bg-white/[0.03] px-2.5 py-1 text-[9px] uppercase tracking-[.1em] text-white/40">
+              {adjustmentPoints.length} {adjustmentPoints.length === 1 ? "ponto" : "pontos"}
+            </span>
+          </div>
+          {hasInvalidAdjustmentTime && (
+            <p
+              role="alert"
+              className="mt-3 rounded-xl border border-red-400/20 bg-red-400/[0.06] px-3 py-2 text-[10px] text-red-200/80"
+            >
+              Revise o tempo destacado. Use MM:SS ou HH:MM:SS.
+            </p>
+          )}
+
+          <div className="mt-5 space-y-3">
+            {adjustmentPoints.map((point, index) => (
+              <div
+                key={point.id}
+                className="relative grid gap-3 rounded-2xl border border-white/[0.08] bg-white/[0.025] p-3 pr-12 sm:grid-cols-[40px_112px_minmax(0,1fr)] sm:items-start sm:p-4 sm:pr-14"
+              >
+                <span className="grid size-8 place-items-center rounded-lg bg-white/[0.05] text-[10px] font-semibold tabular-nums text-white/50 sm:mt-5">
+                  {String(index + 1).padStart(2, "0")}
+                </span>
+                <label className="block">
+                  <span className="flex h-3 items-center gap-1 text-[9px] font-medium uppercase tracking-[.12em] text-white/38">
+                    <Clock3 className="size-3" /> Tempo
+                  </span>
+                  <input
+                    value={point.time}
+                    onChange={(event) =>
+                      updateAdjustmentPoint(
+                        point.id,
+                        "time",
+                        maskClientAdjustmentTimecode(event.target.value),
+                      )
+                    }
+                    onBlur={() =>
+                      updateAdjustmentPoint(
+                        point.id,
+                        "time",
+                        normalizeClientAdjustmentTimecode(point.time),
+                      )
+                    }
+                    inputMode="numeric"
+                    placeholder="00:08"
+                    maxLength={8}
+                    aria-label={`Tempo do ponto ${index + 1}`}
+                    aria-invalid={
+                      point.time.trim() && !isValidClientAdjustmentTimecode(point.time)
+                        ? true
+                        : undefined
+                    }
+                    className={cn(
+                      "mt-2 h-11 w-full rounded-xl border bg-black/20 px-3 text-base tabular-nums text-white outline-none placeholder:text-white/20 sm:text-sm",
+                      point.time.trim() && !isValidClientAdjustmentTimecode(point.time)
+                        ? "border-red-400/45 focus:border-red-300/70"
+                        : "border-white/10 focus:border-[var(--portal-accent)]/45",
+                    )}
+                  />
+                </label>
+                <label className="block">
+                  <span className="flex h-3 items-center text-[9px] font-medium uppercase tracking-[.12em] text-white/38">
+                    Alteração
+                  </span>
+                  <textarea
+                    value={point.change}
+                    onChange={(event) =>
+                      updateAdjustmentPoint(point.id, "change", event.target.value)
+                    }
+                    rows={1}
+                    autoFocus={index === 0}
+                    placeholder="Descreva exatamente o que deve mudar."
+                    aria-label={`Alteração do ponto ${index + 1}`}
+                    className="mt-2 min-h-20 w-full resize-none rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-base leading-5 text-white outline-none placeholder:text-white/20 focus:border-[var(--portal-accent)]/45 sm:h-11 sm:min-h-11 sm:text-sm"
+                  />
+                </label>
+                {adjustmentPoints.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => removeAdjustmentPoint(point.id)}
+                    aria-label={`Remover ponto ${index + 1}`}
+                    className="absolute top-3 right-3 grid size-8 place-items-center rounded-lg text-white/25 transition hover:bg-red-400/10 hover:text-red-300 sm:top-4 sm:right-4"
+                  >
+                    <Trash2 className="size-3.5" />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-5 flex flex-col gap-4 border-t border-white/[0.07] pt-5 sm:flex-row sm:items-center sm:justify-between">
+            <button
+              type="button"
+              onClick={addAdjustmentPoint}
+              disabled={approving}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-white/[0.08] px-4 text-xs font-medium text-white/55 transition hover:bg-white/[0.04] hover:text-white sm:justify-start"
+            >
+              <Plus className="size-3.5" /> Adicionar ponto
+            </button>
+            <div className="flex gap-2 sm:min-w-[360px]">
               <button
                 type="button"
                 onClick={() => setRequestingChanges(false)}
                 disabled={approving}
-                className="h-9 flex-1 rounded-xl border border-white/10 text-xs text-white/45"
+                className="h-10 flex-1 rounded-xl border border-white/10 px-4 text-xs text-white/45 transition hover:bg-white/[0.04] hover:text-white"
               >
                 Cancelar
               </button>
               <button
                 type="button"
-                disabled={!feedback.trim() || approving}
+                disabled={!hasAdjustment || hasInvalidAdjustmentTime || approving}
                 onClick={() => void requestChanges()}
-                className="h-9 flex-1 rounded-xl bg-white text-xs font-semibold text-black disabled:opacity-40"
+                className="h-10 flex-1 rounded-xl bg-white px-4 text-xs font-semibold text-black transition hover:bg-white/90 disabled:opacity-40"
               >
                 {approving ? (
                   <span className="inline-flex items-center gap-2">
@@ -1489,33 +1681,8 @@ function ApprovalCard({
               </button>
             </div>
           </div>
-        ) : (
-          <div className="mt-5 flex gap-2">
-            <button
-              type="button"
-              onClick={() => setRequestingChanges(true)}
-              disabled={approving}
-              className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-xl border border-white/10 px-3 text-xs font-medium text-white/55 transition hover:bg-white/[0.05] hover:text-white"
-            >
-              <MessageSquareText className="size-3.5" /> Solicitar ajustes
-            </button>
-            <button
-              type="button"
-              disabled={approving}
-              onClick={() => setConfirmingApproval(true)}
-              className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-xl px-4 text-xs font-semibold text-black shadow-[0_8px_20px_-14px_var(--portal-accent)] transition hover:brightness-105 disabled:opacity-50"
-              style={{ backgroundColor: accent }}
-            >
-              {approving ? (
-                <Loader2 className="size-3.5 animate-spin" />
-              ) : (
-                <Check className="size-3.5" />
-              )}{" "}
-              Aprovar
-            </button>
-          </div>
-        )}
-      </div>
+        </section>
+      )}
       <AlertDialog open={confirmingApproval} onOpenChange={setConfirmingApproval}>
         <AlertDialogContent className="border-white/[0.09] bg-[#101210] text-white shadow-2xl sm:rounded-3xl">
           <AlertDialogHeader>
