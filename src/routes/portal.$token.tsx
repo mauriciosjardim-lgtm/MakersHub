@@ -47,6 +47,7 @@ import {
 import {
   getPublicClientPortal,
   portalCoverUrl,
+  portalDeliverableAfterDecision,
   portalDisplayProgress,
   portalSlug,
   respondPortalReview,
@@ -296,7 +297,9 @@ function ClientPortalPage() {
       );
       if (!success) throw new Error("Não foi possível registrar");
       toast.success(
-        decision === "approved" ? "Material aprovado" : "Alterações enviadas para a produtora",
+        decision === "approved"
+          ? "Material aprovado e liberado em Entregas"
+          : "Alterações enviadas para a produtora",
       );
       if (import.meta.env.DEV && token === "preview") {
         setPortal((current) =>
@@ -307,12 +310,7 @@ function ClientPortalPage() {
                   ...project,
                   deliverables: project.deliverables.map((item) =>
                     item.id === deliverable.id
-                      ? {
-                          ...item,
-                          status: decision === "approved" ? "aprovado" : "ajustes",
-                          client_feedback: feedback || null,
-                          decided_at: new Date().toISOString(),
-                        }
+                      ? portalDeliverableAfterDecision(item, decision, feedback)
                       : item,
                   ),
                 })),
@@ -1697,8 +1695,8 @@ function ApprovalCard({
             </AlertDialogTitle>
             <AlertDialogDescription className="leading-6 text-white/45">
               Você está aprovando <strong className="font-medium text-white">{item.title}</strong>,{" "}
-              {item.version_label || "na versão atual"}. A produtora receberá sua decisão e seguirá
-              para a próxima etapa.
+              {item.version_label || "na versão atual"}. A produtora receberá sua decisão e o
+              material ficará disponível em Entregas.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="rounded-2xl border border-white/[0.07] bg-white/[0.025] px-4 py-3 text-xs text-white/42">
