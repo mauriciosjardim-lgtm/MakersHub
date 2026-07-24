@@ -1130,7 +1130,10 @@ function TarefaCard({
   isDragging?: boolean;
   overlay?: boolean;
 }) {
-  const { attributes, listeners, setNodeRef, transform } = useDraggable({ id: tarefa.id });
+  const { attributes, listeners, setNodeRef, transform } = useDraggable({
+    id: overlay ? `${tarefa.id}-overlay` : tarefa.id,
+    disabled: overlay,
+  });
   const prio = PRIORIDADES[tarefa.prioridade] ?? PRIORIDADES.media;
   const lk = linkSeguro(tarefa.link);
   const prazo = tarefa.prazo ? new Date(tarefa.prazo) : null;
@@ -1174,7 +1177,15 @@ function TarefaCard({
       )}
     >
       <span className={cn("absolute inset-y-0 left-0 w-[3px]", prioridadeVisual.acento)} />
-      <div className="flex items-center justify-between gap-2">
+      <button
+        type="button"
+        onClick={onEditar}
+        disabled={overlay}
+        tabIndex={overlay ? -1 : undefined}
+        aria-label={`Editar tarefa ${tarefa.titulo}`}
+        className="absolute inset-0 z-0 cursor-pointer rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+      />
+      <div className="pointer-events-none relative z-[1] flex items-center justify-between gap-2">
         <span
           className={cn(
             "rounded-full border px-2 py-1 text-[8px] font-bold uppercase tracking-[.1em]",
@@ -1189,7 +1200,7 @@ function TarefaCard({
               e.stopPropagation();
               projetosActions.atualizarTarefa(tarefa.id, { concluida: !tarefa.concluida });
             }}
-            className="grid size-7 place-items-center rounded-lg text-muted-foreground transition hover:bg-surface-2 hover:text-primary"
+            className="pointer-events-auto grid size-7 place-items-center rounded-lg text-muted-foreground transition hover:bg-surface-2 hover:text-primary"
             title={tarefa.concluida ? "Marcar como pendente" : "Marcar como concluída"}
           >
             {tarefa.concluida ? (
@@ -1201,7 +1212,8 @@ function TarefaCard({
           <button
             {...listeners}
             {...attributes}
-            className="grid size-7 shrink-0 cursor-grab touch-none place-items-center rounded-lg text-muted-foreground/40 opacity-0 transition group-hover:opacity-100 hover:bg-surface-2 hover:text-muted-foreground active:cursor-grabbing"
+            onClick={(event) => event.stopPropagation()}
+            className="pointer-events-auto grid size-7 shrink-0 cursor-grab touch-none place-items-center rounded-lg text-muted-foreground/40 opacity-100 transition hover:bg-surface-2 hover:text-muted-foreground active:cursor-grabbing sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
             title="Arrastar para outra fase"
           >
             <svg className="size-3.5" viewBox="0 0 16 16" fill="currentColor">
@@ -1216,7 +1228,7 @@ function TarefaCard({
         </div>
       </div>
 
-      <button onClick={onEditar} className="mt-3 block w-full text-left">
+      <div className="pointer-events-none relative z-[1] mt-3 block w-full text-left">
         <p
           className={cn(
             "text-[13px] font-semibold leading-snug tracking-[-.01em]",
@@ -1230,9 +1242,9 @@ function TarefaCard({
             {tarefa.descricao}
           </p>
         )}
-      </button>
+      </div>
 
-      <div className="mt-4 flex items-center gap-2 border-t border-border/50 pt-3">
+      <div className="pointer-events-none relative z-[1] mt-4 flex items-center gap-2 border-t border-border/50 pt-3">
         <span className="grid size-6 shrink-0 place-items-center rounded-full bg-primary/12 text-[8px] font-bold text-primary ring-1 ring-primary/20">
           {iniciais(tarefa.responsavel)}
         </span>
@@ -1258,7 +1270,7 @@ function TarefaCard({
           rel="noopener noreferrer"
           onClick={(e) => e.stopPropagation()}
           onPointerDown={(e) => e.stopPropagation()}
-          className="mt-2 inline-flex max-w-full items-center gap-1 rounded-md border border-border/40 bg-surface-2/40 px-1.5 py-0.5 text-[9px] text-muted-foreground transition hover:border-primary/40 hover:text-primary"
+          className="pointer-events-auto relative z-[1] mt-2 inline-flex max-w-full items-center gap-1 rounded-md border border-border/40 bg-surface-2/40 px-1.5 py-0.5 text-[9px] text-muted-foreground transition hover:border-primary/40 hover:text-primary"
           title={lk.href}
         >
           <Link2 size={10} color="currentColor" variant="Linear" className="shrink-0" />

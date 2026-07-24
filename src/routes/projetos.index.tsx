@@ -105,7 +105,6 @@ function ProjetosPage() {
   const [semanaOffset, setSemanaOffset] = useState(0);
   const [ordemClientes, setOrdemClientes] = useState<string[]>([]);
   const [clienteArrastado, setClienteArrastado] = useState<string | null>(null);
-  const ignorarCliqueAposArraste = useRef(false);
   const [busca, setBusca] = useState("");
   const [clientModal, setClientModal] = useState(false);
   const [centralAberta, setCentralAberta] = useState(false);
@@ -370,34 +369,16 @@ function ProjetosPage() {
                 const cor = coresClientes.get(normalizarNome(nome)) ?? corCliente(nome);
                 const destino = ps.find((p) => !["concluido", "pausado"].includes(p.fase)) ?? ps[0];
                 const abrirCliente = () => {
-                  if (ignorarCliqueAposArraste.current) return;
                   const workspaceId = clientRecord?.id ?? destino?.id;
                   if (workspaceId) navigate({ to: "/projetos/$id", params: { id: workspaceId } });
                 };
                 return (
                   <div
                     key={nome}
-                    role="button"
-                    tabIndex={0}
-                    draggable
-                    onDragStart={() => {
-                      ignorarCliqueAposArraste.current = true;
-                      setClienteArrastado(nome);
-                    }}
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={() => {
                       if (clienteArrastado) moverCliente(clienteArrastado, nome);
                       setClienteArrastado(null);
-                    }}
-                    onDragEnd={() => {
-                      setClienteArrastado(null);
-                      window.setTimeout(() => {
-                        ignorarCliqueAposArraste.current = false;
-                      }, 0);
-                    }}
-                    onClick={abrirCliente}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") abrirCliente();
                     }}
                     style={{ "--cliente": cor } as React.CSSProperties}
                     className={cn(
@@ -408,6 +389,12 @@ function ProjetosPage() {
                       clienteArrastado === nome && "opacity-45",
                     )}
                   >
+                    <button
+                      type="button"
+                      onClick={abrirCliente}
+                      aria-label={`Abrir workspace de ${nome}`}
+                      className="absolute inset-0 z-0 cursor-pointer rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--cliente)]"
+                    />
                     {clientRecord && (
                       <button
                         type="button"
@@ -436,13 +423,23 @@ function ProjetosPage() {
                         )}
                       </button>
                     )}
-                    <span
-                      className="absolute right-9 top-3 cursor-grab text-muted-foreground/35 transition group-hover:text-muted-foreground active:cursor-grabbing"
+                    <button
+                      type="button"
+                      draggable
+                      onClick={(event) => event.stopPropagation()}
+                      onDragStart={() => {
+                        setClienteArrastado(nome);
+                      }}
+                      onDragEnd={() => {
+                        setClienteArrastado(null);
+                      }}
+                      className="absolute right-9 top-2.5 z-10 grid size-6 cursor-grab place-items-center rounded-md text-muted-foreground/35 transition hover:bg-surface-2 hover:text-muted-foreground active:cursor-grabbing"
                       aria-label="Arrastar para reordenar"
+                      title="Arrastar para reordenar"
                     >
                       <GripVertical size={15} />
-                    </span>
-                    <div className="flex items-center gap-3">
+                    </button>
+                    <div className="pointer-events-none relative z-[1] flex items-center gap-3">
                       <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-[color-mix(in_srgb,var(--cliente)_16%,transparent)] text-xs font-bold text-[var(--cliente)]">
                         {iniciais(nome)}
                       </span>
@@ -454,7 +451,7 @@ function ProjetosPage() {
                         </p>
                       </div>
                     </div>
-                    <div className="mt-3.5 flex justify-between border-t border-border/40 pt-2.5 text-[11px] text-muted-foreground">
+                    <div className="pointer-events-none relative z-[1] mt-3.5 flex justify-between border-t border-border/40 pt-2.5 text-[11px] text-muted-foreground">
                       <span>
                         {pendentes} tarefa{pendentes === 1 ? "" : "s"} aberta
                         {pendentes === 1 ? "" : "s"}

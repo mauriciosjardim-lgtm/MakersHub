@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -150,6 +151,11 @@ export function TarefaModal({
           <DialogTitle className="font-display">
             {editando ? "Editar tarefa" : "Nova tarefa"}
           </DialogTitle>
+          <DialogDescription>
+            {editando
+              ? "Atualize os responsáveis, prazos e a etapa desta tarefa."
+              : "Defina a tarefa, o responsável e onde ela entra no fluxo de produção."}
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-3 overflow-y-auto px-4 pb-3 sm:px-6">
           <div className="space-y-1.5">
