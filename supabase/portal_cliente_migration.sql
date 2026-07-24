@@ -354,6 +354,10 @@ begin
   update public.portal_review_versions rv
   set
     status = p_decision,
+    kind = case
+      when p_decision = 'approved' then 'delivery'
+      else rv.kind
+    end,
     client_feedback = nullif(trim(p_feedback), ''),
     client_name = nullif(trim(p_client_name), ''),
     decided_at = now()

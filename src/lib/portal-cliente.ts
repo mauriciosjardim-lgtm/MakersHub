@@ -61,6 +61,21 @@ export interface PortalDeliverable {
   created_at?: string | null;
 }
 
+export function portalDeliverableAfterDecision(
+  deliverable: PortalDeliverable,
+  decision: "approved" | "changes_requested",
+  feedback?: string,
+  decidedAt = new Date().toISOString(),
+): PortalDeliverable {
+  return {
+    ...deliverable,
+    kind: decision === "approved" ? "delivery" : "review",
+    status: decision === "approved" ? "aprovado" : "ajustes",
+    client_feedback: feedback?.trim() || null,
+    decided_at: decidedAt,
+  };
+}
+
 export interface PortalProject {
   id: string;
   name: string;
@@ -303,7 +318,7 @@ const PORTAL_PREVIEW: ClientPortalSnapshot = {
           id: "d4",
           review_id: "d4",
           thread_id: "thread-moodboard",
-          kind: "review",
+          kind: "delivery",
           title: "Moodboard e direção visual",
           type: "documento",
           status: "aprovado",

@@ -189,7 +189,6 @@ export function ClientPortalProjectPanel({
   );
   const pending = reviewItems.filter((item) => item.status === "pending");
   const changes = reviewItems.filter((item) => item.status === "changes_requested");
-  const approved = reviewItems.filter((item) => item.status === "approved");
   const activeReviews = reviewItems.filter((item) => item.status !== "archived");
   const portalUrl =
     access?.token && typeof window !== "undefined"
@@ -509,7 +508,7 @@ export function ClientPortalProjectPanel({
           <div className="grid grid-cols-3 divide-x divide-border/60 border-b border-border/60">
             <ReviewMetric label="Com o cliente" value={pending.length} tone="text-warning" />
             <ReviewMetric label="Ajustes" value={changes.length} tone="text-destructive" />
-            <ReviewMetric label="Aprovados" value={approved.length} tone="text-success" />
+            <ReviewMetric label="Em entregas" value={deliveries.length} tone="text-success" />
           </div>
 
           <div className="p-4">
@@ -554,7 +553,7 @@ export function ClientPortalProjectPanel({
                 <span className="grid size-5 place-items-center rounded-full bg-success text-[9px] font-bold text-black">
                   3
                 </span>
-                <h3 className="text-sm font-semibold">Entregar materiais finais</h3>
+                <h3 className="text-sm font-semibold">Entregas finais</h3>
                 {deliveries.length > 0 && (
                   <span className="rounded-full bg-success/12 px-2 py-0.5 text-[9px] font-bold text-success">
                     {deliveries.length} disponível{deliveries.length === 1 ? "" : "is"}
@@ -562,7 +561,8 @@ export function ClientPortalProjectPanel({
                 )}
               </div>
               <p className="mt-1 text-[10px] text-muted-foreground">
-                Use para masters, fotos, documentos e arquivos já finalizados — sem pedir aprovação.
+                Aprovações entram aqui automaticamente. Use “Nova entrega” para liberar um arquivo
+                final sem revisão.
               </p>
             </div>
             <Button size="sm" onClick={() => setDeliveryDialog(true)} disabled={!project.clienteId}>

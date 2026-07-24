@@ -97,8 +97,8 @@ function ClientAreaManager() {
     clientProjects.find((project) => project.id === selectedProjectId) ?? clientProjects[0];
   const pending = reviews.filter((review) => review.status === "pending");
   const changes = reviews.filter((review) => review.status === "changes_requested");
-  const approved = reviews.filter(
-    (review) => review.kind !== "delivery" && review.status === "approved",
+  const deliveries = reviews.filter(
+    (review) => review.kind === "delivery" && review.status !== "archived",
   );
   const published = activeProjects.filter((project) => project.portalVisible);
   const clientReviews = selectedClient
@@ -138,7 +138,7 @@ function ClientAreaManager() {
             Central do cliente
           </h1>
           <p className="mt-1 max-w-xl text-xs leading-5 text-muted-foreground">
-            Crie acessos, escolha o que será publicado e acompanhe todas as aprovações.
+            Crie acessos, escolha o que será publicado e acompanhe aprovações e entregas.
           </p>
         </div>
         <div className="grid w-full grid-cols-2 overflow-hidden rounded-xl border border-border bg-surface-1/35 sm:w-auto sm:grid-cols-4">
@@ -158,8 +158,8 @@ function ClientAreaManager() {
             tone="text-destructive"
           />
           <CompactMetric
-            label="Aprovados"
-            value={dataLoading ? "—" : approved.length}
+            label="Entregas"
+            value={dataLoading ? "—" : deliveries.length}
             tone="text-success"
           />
         </div>
