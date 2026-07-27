@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Download, FileUp, Phone, Search, Star, UserPlus, UsersRound } from "lucide-react";
 import { Edit2, Sms } from "iconsax-react";
@@ -244,29 +244,76 @@ function ContactField({
   className?: string;
 }) {
   const valorLimpo = valorContatoOuVazio(value);
+  const [editando, setEditando] = useState(false);
+  const [rascunho, setRascunho] = useState(valorLimpo);
+  const [salvando, setSalvando] = useState(false);
+  const cancelarAoSair = useRef(false);
+
+  if (!editando) {
+    return (
+      <button
+        type="button"
+        onClick={() => {
+          setRascunho(valorLimpo);
+          setEditando(true);
+        }}
+        className={`group/field flex min-h-8 min-w-[150px] max-w-[220px] items-center justify-between gap-3 rounded-lg px-2.5 py-1.5 text-left text-xs transition hover:bg-primary/[.07] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/40 ${className ?? ""}`}
+        title={valorLimpo || "Clique para adicionar"}
+      >
+        <span className={`truncate ${valorLimpo ? "text-foreground" : "text-muted-foreground/60"}`}>
+          {valorLimpo || "—"}
+        </span>
+        <Edit2
+          size={12}
+          color="currentColor"
+          variant="Linear"
+          className="shrink-0 text-primary opacity-0 transition group-hover/field:opacity-70 group-focus-visible/field:opacity-70"
+        />
+      </button>
+    );
+  }
+
   return (
-    <div className="group relative inline-flex items-center">
+    <div className="relative inline-flex items-center">
       <Input
-        key={value}
         type={type}
-        defaultValue={valorLimpo}
+        value={rascunho}
+        onChange={(event) => setRascunho(event.target.value)}
         placeholder="—"
+        autoFocus
+        disabled={salvando}
         onBlur={async (event) => {
+          if (cancelarAoSair.current) {
+            cancelarAoSair.current = false;
+            setRascunho(valorLimpo);
+            setEditando(false);
+            return;
+          }
           const proximo = event.currentTarget.value.trim();
-          if (proximo === valorLimpo) return;
+          if (proximo === valorLimpo) {
+            setEditando(false);
+            return;
+          }
+          setSalvando(true);
           const salvo = await onSave(proximo || "—");
-          if (!salvo) event.currentTarget.value = valorLimpo;
+          setSalvando(false);
+          if (!salvo) setRascunho(valorLimpo);
+          setEditando(false);
         }}
         onKeyDown={(event) => {
           if (event.key === "Enter") event.currentTarget.blur();
+          if (event.key === "Escape") {
+            cancelarAoSair.current = true;
+            event.currentTarget.blur();
+          }
         }}
-        className={`h-8 min-w-[140px] border-border/60 bg-surface-2/30 px-2 pr-7 text-xs shadow-none hover:border-primary/50 focus-visible:border-primary focus-visible:ring-primary/30 ${className ?? ""}`}
+        className={`h-8 min-w-[150px] border-primary/50 bg-primary/[.06] px-2.5 pr-8 text-xs shadow-[0_0_0_3px_hsl(var(--primary)/0.06)] focus-visible:border-primary focus-visible:ring-1 focus-visible:ring-primary/30 ${className ?? ""}`}
       />
       <Edit2
         size={12}
         color="currentColor"
         variant="Linear"
-        className="pointer-events-none absolute right-2 text-primary opacity-60 transition group-focus-within:opacity-100"
+        className="pointer-events-none absolute right-2.5 text-primary"
       />
     </div>
   );
