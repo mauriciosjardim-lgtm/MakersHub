@@ -95,15 +95,37 @@ export function extractGoogleDriveFileId(url: string): string | null {
 }
 
 export function getReviewEmbedUrl(url: string): string | null {
-  const fileId = extractGoogleDriveFileId(url);
+  const value = url.trim();
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
+
+  const fileId = extractGoogleDriveFileId(value);
   if (fileId) return `https://drive.google.com/file/d/${fileId}/preview`;
-  if (/player\.vimeo\.com\/video\//i.test(url)) return url;
-  const vimeo = url.match(/vimeo\.com\/(\d+)/i);
-  if (vimeo?.[1]) return `https://player.vimeo.com/video/${vimeo[1]}`;
-  const youtube = url.match(
-    /(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([^?&#/]+)/i,
-  );
-  if (youtube?.[1]) return `https://www.youtube.com/embed/${youtube[1]}`;
+
+  const hostname = parsed.hostname.toLowerCase().replace(/^www\./, "");
+  if (hostname === "player.vimeo.com") {
+    const id = parsed.pathname.match(/^\/video\/(\d+)/)?.[1];
+    return id ? `https://player.vimeo.com/video/${id}` : null;
+  }
+  if (hostname === "vimeo.com") {
+    const id = parsed.pathname.match(/^\/(\d+)/)?.[1];
+    return id ? `https://player.vimeo.com/video/${id}` : null;
+  }
+
+  let youtubeId: string | null = null;
+  if (hostname === "youtu.be") youtubeId = parsed.pathname.split("/").filter(Boolean)[0] ?? null;
+  if (hostname === "youtube.com" || hostname === "m.youtube.com") {
+    if (parsed.pathname === "/watch") youtubeId = parsed.searchParams.get("v");
+    else youtubeId = parsed.pathname.match(/^\/(?:embed|shorts)\/([^/]+)/)?.[1] ?? null;
+  }
+  if (youtubeId && /^[A-Za-z0-9_-]+$/.test(youtubeId)) {
+    return `https://www.youtube.com/embed/${youtubeId}`;
+  }
   return null;
 }
 

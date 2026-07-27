@@ -7,6 +7,7 @@ import { useFinanceiroSupa } from "@/lib/hooks/useFinanceiro";
 import { useComercial } from "@/lib/hooks/useComercial";
 import { useAuth } from "@/lib/auth";
 import { temAcesso, type Permissoes } from "@/lib/permissoes";
+import { isProjetoAtivo } from "@/lib/mock/projetos";
 import { responderAssistant } from "@/lib/assistant/engine";
 
 export const Route = createFileRoute("/assistant")({
@@ -29,7 +30,7 @@ function AssistantPage() {
   const [pergunta, setPergunta] = useState("");
   const [resposta, setResposta] = useState("Sua operação está sendo analisada em tempo real.");
   const agora = new Date();
-  const ativos = projetos.filter(p => !p.arquivado && !["concluido", "pausado"].includes(p.fase));
+  const ativos = projetos.filter(isProjetoAtivo);
   const abertas = tarefas.filter(t => !t.concluida);
   const atrasadas = abertas.filter(t => t.prazo && new Date(t.prazo) < agora);
   const proximas = abertas.filter(t => t.prazo && new Date(t.prazo) >= agora).sort((a, b) => +new Date(a.prazo!) - +new Date(b.prazo!));

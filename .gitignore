@@ -1,6 +1,10 @@
 # Logs
 logs
 *.log
+.video-tools/
+downloads/
+test-results/
+supabase/.temp/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

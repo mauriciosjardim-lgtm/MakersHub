@@ -4,6 +4,7 @@ import { useProjetos } from "@/lib/hooks/useProjetos";
 import { useAgendaSupa } from "@/lib/hooks/useAgenda";
 import { useAuth } from "@/lib/auth";
 import { temAcesso, type Permissoes } from "@/lib/permissoes";
+import { isProjetoConcluidoOuPausado } from "@/lib/mock/projetos";
 import { cn } from "@/lib/utils";
 import {
   isToday, isThisWeek, isPast, format, startOfDay,
@@ -79,7 +80,7 @@ export function MembroDashboard() {
   // projetos em que participo
   const meusProjetos = useMemo(() => {
     const mine = projetos.filter(p => p.equipe?.some(m => ehMinha(m)));
-    return (mine.length ? mine : projetos).filter(p => !["concluido"].includes(p.fase));
+    return (mine.length ? mine : projetos).filter((p) => !isProjetoConcluidoOuPausado(p));
   }, [projetos, meuNome]);
 
   // próximos eventos (agenda compacta)

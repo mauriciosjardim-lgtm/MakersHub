@@ -90,7 +90,7 @@ function AppShell({ sessionHint }: { sessionHint: boolean }) {
 
   const sidebarStyle = {
     "--sidebar-width": "15rem",
-    "--sidebar-width-icon": "4rem",
+    "--sidebar-width-icon": "4.5rem",
     "--sidebar": "var(--background)",
     "--sidebar-accent": "color-mix(in srgb, var(--foreground) 7%, var(--background))",
     "--sidebar-border": "color-mix(in srgb, var(--foreground) 7%, transparent)",

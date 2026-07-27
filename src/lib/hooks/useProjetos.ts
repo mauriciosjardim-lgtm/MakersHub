@@ -13,9 +13,16 @@ import type {
   Marco,
   Entregavel,
 } from "@/lib/mock/projetos";
-import { FASES_PADRAO } from "@/lib/mock/projetos";
+import {
+  FASES_PADRAO,
+  parseFaseToken,
+  faseParaId,
+  fasesParaIds,
+  serializarFaseToken,
+} from "@/lib/mock/projetos";
 import { agendaActions } from "./useAgenda";
 import { calcularPercentualFluxo } from "@/lib/projetos/progresso";
+import { planejarRemocaoFaseGlobal } from "@/lib/projetos/fluxo";
 
 const tipoAgendaDaTarefa = (status?: string) =>
   status === "captacao"
@@ -28,6 +35,13 @@ const tipoAgendaDaTarefa = (status?: string) =>
 
 // ─── helpers de conversão snake_case ↔ camelCase ───────────────────────────
 
+function normalizarFluxo(fases?: unknown) {
+  if (!Array.isArray(fases)) return [...FASES_PADRAO];
+
+  const normalizadas = normalizarFluxoComLabel(fases);
+  return normalizadas.length ? normalizadas : [...FASES_PADRAO];
+}
+
 function rowToProjeto(r: any): Projeto {
   return {
     id: r.id,
@@ -37,7 +51,7 @@ function rowToProjeto(r: any): Projeto {
     descricao: r.descricao ?? undefined,
     fase: r.fase as FaseProjeto,
     progresso: r.progresso,
-    fases: r.fases ?? [...FASES_PADRAO],
+    fases: normalizarFluxo(r.fases),
     equipe: r.equipe ?? [],
     dataInicio: r.data_inicio,
     dataEntrega: r.data_entrega ?? undefined,
@@ -296,6 +310,17 @@ function calcProgresso(projetoId: string): number {
   return projeto ? calcularPercentualFluxo(projeto, store.tarefas) : 0;
 }
 
+function normalizarFluxoComLabel(fases?: string[]) {
+  const base = fases ?? [];
+  return base
+    .map((fase) => {
+      const parsed = parseFaseToken(fase);
+      if (!parsed.id) return "";
+      return serializarFaseToken(parsed.id, parsed.label);
+    })
+    .filter(Boolean);
+}
+
 // Recalcula a partir do store JÁ atualizado, pinta a barra na hora e só então
 // persiste — sem esperar o evento Realtime. O handler Realtime que vier depois
 // verá o mesmo valor e será ignorado (guard de igualdade), evitando re-render duplo.
@@ -310,27 +335,24 @@ async function atualizarProgresso(projetoId: string) {
 export const projetosActions = {
   async criarProjeto(input: Omit<Projeto, "id" | "criadoEm" | "progresso">) {
     const empresa_id = await getEmpresaId();
-    const { data, error } = await supabase
-      .from("projetos")
-      .insert({
-        empresa_id,
-        nome: input.nome,
-        cliente: input.cliente,
-        cliente_id: input.clienteId ?? null,
-        descricao: input.descricao,
-        fase: input.fase,
-        fases: input.fases ?? [...FASES_PADRAO],
-        equipe: input.equipe,
-        data_inicio: input.dataInicio,
-        data_entrega: input.dataEntrega ?? null,
-        arquivado: input.arquivado ?? false,
-        valor: input.valor,
-        cor: input.cor,
-        notas: input.notas,
-        progresso: 0,
-      })
-      .select()
-      .single();
+    const payload = {
+      empresa_id,
+      nome: input.nome,
+      cliente: input.cliente,
+      cliente_id: input.clienteId ?? null,
+      descricao: input.descricao,
+      fase: input.fase ?? "briefing",
+      fases: normalizarFluxoComLabel(input.fases ?? [...FASES_PADRAO]),
+      equipe: input.equipe,
+      data_inicio: input.dataInicio,
+      data_entrega: input.dataEntrega ?? null,
+      arquivado: input.arquivado ?? false,
+      valor: input.valor,
+      cor: input.cor,
+      notas: input.notas,
+      progresso: 0,
+    } as any;
+    const { data, error } = await supabase.from("projetos").insert(payload).select().single();
     if (dbErro(error, "criar projeto")) return null;
     if (data) setStore({ projetos: [rowToProjeto(data), ...store.projetos] });
     return data;
@@ -343,7 +365,7 @@ export const projetosActions = {
     if (input.clienteId !== undefined) payload.cliente_id = input.clienteId;
     if (input.descricao !== undefined) payload.descricao = input.descricao;
     if (input.fase !== undefined) payload.fase = input.fase;
-    if (input.fases !== undefined) payload.fases = input.fases;
+    if (input.fases !== undefined) payload.fases = normalizarFluxoComLabel(input.fases);
     if (input.equipe !== undefined) payload.equipe = input.equipe;
     if (input.dataInicio !== undefined) payload.data_inicio = input.dataInicio;
     if (input.dataEntrega !== undefined) payload.data_entrega = input.dataEntrega;
@@ -370,8 +392,19 @@ export const projetosActions = {
       payload.portal_updated_at = new Date().toISOString();
     }
     const { error } = await supabase.from("projetos").update(payload).eq("id", id);
-    if (dbErro(error, "atualizar projeto")) return;
-    setStore({ projetos: store.projetos.map((p) => (p.id === id ? { ...p, ...input } : p)) });
+    if (dbErro(error, "atualizar projeto")) return false;
+    setStore({
+      projetos: store.projetos.map((p) =>
+        p.id === id
+          ? {
+              ...p,
+              ...input,
+              ...(input.fases !== undefined ? { fases: normalizarFluxo(input.fases) } : {}),
+            }
+          : p,
+      ),
+    });
+    return true;
   },
 
   // Renomeia um cliente em todos os projetos que o referenciam (campo texto
@@ -398,13 +431,14 @@ export const projetosActions = {
 
   async removerProjeto(id: string) {
     const { error } = await supabase.from("projetos").delete().eq("id", id);
-    if (dbErro(error, "remover projeto")) return;
+    if (dbErro(error, "remover projeto")) return false;
     setStore({
       projetos: store.projetos.filter((p) => p.id !== id),
       tarefas: store.tarefas.filter((t) => t.projetoId !== id),
       marcos: store.marcos.filter((m) => m.projetoId !== id),
       entregaveis: store.entregaveis.filter((e) => e.projetoId !== id),
     });
+    return true;
   },
 
   async criarTarefa(input: Omit<Tarefa, "id" | "criadoEm">) {
@@ -448,7 +482,7 @@ export const projetosActions = {
   async atualizarTarefa(id: string, input: Partial<Omit<Tarefa, "id" | "criadoEm">>) {
     const tarefa = store.tarefas.find((t) => t.id === id);
     const projeto = tarefa ? store.projetos.find((p) => p.id === tarefa.projetoId) : undefined;
-    const fases = projeto?.fases ?? [...FASES_PADRAO];
+    const fases = fasesParaIds(projeto?.fases ?? [...FASES_PADRAO]);
 
     // Normaliza a sincronia fase (Kanban) ↔ checkbox (concluída) num só lugar.
     const norm: Partial<Omit<Tarefa, "id" | "criadoEm">> = { ...input };
@@ -478,7 +512,7 @@ export const projetosActions = {
     if (norm.prioridade !== undefined) payload.prioridade = norm.prioridade;
     if (norm.link !== undefined) payload.link = norm.link?.trim() || null;
     const { error } = await supabase.from("tarefas").update(payload).eq("id", id);
-    if (dbErro(error, "atualizar tarefa")) return;
+    if (dbErro(error, "atualizar tarefa")) return false;
 
     const localPatch: Partial<Tarefa> = { ...norm };
     if (norm.link !== undefined) localPatch.link = norm.link?.trim() || undefined;
@@ -514,15 +548,17 @@ export const projetosActions = {
         await agendaActions.removerPorRef("tarefa", id);
       }
     }
+    return true;
   },
 
   async removerTarefa(id: string) {
     const tarefa = store.tarefas.find((t) => t.id === id);
     const { error } = await supabase.from("tarefas").delete().eq("id", id);
-    if (dbErro(error, "remover tarefa")) return;
+    if (dbErro(error, "remover tarefa")) return false;
     setStore({ tarefas: store.tarefas.filter((t) => t.id !== id) });
     if (tarefa) await atualizarProgresso(tarefa.projetoId);
     await agendaActions.removerPorRef("tarefa", id);
+    return true;
   },
 
   async criarMarco(input: Omit<Marco, "id">) {
@@ -554,8 +590,9 @@ export const projetosActions = {
 
   async removerMarco(id: string) {
     const { error } = await supabase.from("marcos").delete().eq("id", id);
-    if (dbErro(error, "remover marco")) return;
+    if (dbErro(error, "remover marco")) return false;
     setStore({ marcos: store.marcos.filter((m) => m.id !== id) });
+    return true;
   },
 
   async criarEntregavel(input: Omit<Entregavel, "id" | "criadoEm">) {
@@ -591,19 +628,22 @@ export const projetosActions = {
 
   async removerEntregavel(id: string) {
     const { error } = await supabase.from("entregaveis").delete().eq("id", id);
-    if (dbErro(error, "remover entregável")) return;
+    if (dbErro(error, "remover entregável")) return false;
     setStore({ entregaveis: store.entregaveis.filter((e) => e.id !== id) });
+    return true;
   },
 
   async adicionarFase(projetoId: string, fase: string) {
     const projeto = store.projetos.find((p) => p.id === projetoId);
     if (!projeto) return;
-    const fases = projeto.fases ?? [...FASES_PADRAO];
-    const key = fase.toLowerCase().replace(/\s+/g, "_");
-    if (fases.includes(key)) return;
-    const idx = fases.indexOf("concluida");
-    const novas = [...fases];
-    idx >= 0 ? novas.splice(idx, 0, key) : novas.push(key);
+    const fluxoAtual = projeto.fases ?? [...FASES_PADRAO];
+    const ids = fasesParaIds(fluxoAtual);
+    const faseId = fase.toLowerCase().replace(/\s+/g, "_");
+    if (ids.includes(faseId)) return;
+    const idx = ids.indexOf("concluida");
+    const novas = [...fluxoAtual];
+    if (idx >= 0) novas.splice(idx, 0, serializarFaseToken(faseId, fase));
+    else novas.push(serializarFaseToken(faseId, fase));
     await this.atualizarProjeto(projetoId, { fases: novas });
   },
 
@@ -611,7 +651,7 @@ export const projetosActions = {
     const projeto = store.projetos.find((p) => p.id === projetoId);
     if (!projeto) return;
     const fases = [...(projeto.fases ?? [...FASES_PADRAO])];
-    const idx = fases.indexOf(fase);
+    const idx = fases.findIndex((f) => faseParaId(f) === faseParaId(fase));
     const novoIdx = idx + direcao;
     if (idx < 0 || novoIdx < 0 || novoIdx >= fases.length) return;
     [fases[idx], fases[novoIdx]] = [fases[novoIdx], fases[idx]];
@@ -622,12 +662,89 @@ export const projetosActions = {
     const projeto = store.projetos.find((p) => p.id === projetoId);
     if (!projeto) return;
     const fases = projeto.fases ?? [...FASES_PADRAO];
-    const idx = fases.indexOf(fase);
-    const fallback = fases[idx - 1] ?? "concluida";
+    const idx = fases.findIndex((f) => faseParaId(f) === faseParaId(fase));
+    const ids = fasesParaIds(fases);
+    const fallback = ids[idx - 1] ?? "concluida";
     // move tarefas da fase removida
-    const afetadas = store.tarefas.filter((t) => t.projetoId === projetoId && t.status === fase);
+    const alvoId = faseParaId(fase);
+    const afetadas = store.tarefas.filter(
+      (t) => t.projetoId === projetoId && faseParaId(t.status) === alvoId,
+    );
     await Promise.all(afetadas.map((t) => this.atualizarTarefa(t.id, { status: fallback })));
-    await this.atualizarProjeto(projetoId, { fases: fases.filter((f) => f !== fase) });
+    await this.atualizarProjeto(projetoId, {
+      fases: fases.filter((f) => faseParaId(f) !== alvoId),
+    });
+  },
+
+  async removerFaseDeTodos(fase: string) {
+    const alvoId = faseParaId(fase);
+    if (!alvoId || alvoId === "concluida") return false;
+
+    const plano = planejarRemocaoFaseGlobal(store.projetos, store.tarefas, alvoId);
+    if (plano.projetos.length === 0) return false;
+
+    const tarefasAtualizadas = await Promise.all(
+      plano.tarefas.map((tarefa) =>
+        this.atualizarTarefa(tarefa.tarefaId, { status: tarefa.status }),
+      ),
+    );
+    if (tarefasAtualizadas.some((resultado) => resultado === false)) return false;
+
+    const projetosAtualizados = await Promise.all(
+      plano.projetos.map((projeto) =>
+        this.atualizarProjeto(projeto.projetoId, {
+          fases: projeto.fases,
+        }),
+      ),
+    );
+    if (projetosAtualizados.some((resultado) => resultado === false)) return false;
+
+    return {
+      projetos: plano.projetos.length,
+      tarefas: plano.tarefas.length,
+    };
+  },
+
+  async replicarFluxoParaTodos(projetoId: string) {
+    const origem = store.projetos.find((p) => p.id === projetoId);
+    if (!origem) return false;
+    const fluxoOrigem = origem.fases ?? [...FASES_PADRAO];
+    const fluxoOrigemIds = fasesParaIds(fluxoOrigem);
+    const alvos = store.projetos.filter((p) => p.id !== projetoId);
+    const fluxos = new Map<string, string[]>();
+
+    // Nunca deixa uma tarefa órfã: etapas exclusivas de outro projeto são
+    // preservadas antes de "Concluída" ao aplicar o fluxo compartilhado.
+    for (const projeto of alvos) {
+      const usadas = store.tarefas
+        .filter((t) => t.projetoId === projeto.id)
+        .map((t) => t.status)
+        .map((fase) => faseParaId(fase))
+        .filter((faseId) => !fluxoOrigemIds.includes(faseId));
+      const novas = [...fluxoOrigem];
+      const final = novas.findIndex((fase) => faseParaId(fase) === "concluida");
+      const extras = [...new Set(usadas.map((faseId) => serializarFaseToken(faseId)))];
+      novas.splice(final >= 0 ? final : novas.length, 0, ...extras);
+      fluxos.set(projeto.id, novas);
+    }
+
+    const resultados = await Promise.all(
+      alvos.map((projeto) =>
+        supabase
+          .from("projetos")
+          .update({ fases: fluxos.get(projeto.id) })
+          .eq("id", projeto.id),
+      ),
+    );
+    const erro = resultados.find((resultado) => resultado.error)?.error;
+    if (dbErro(erro ?? null, "replicar fluxo de produção")) return false;
+    setStore({
+      projetos: store.projetos.map((projeto) => ({
+        ...projeto,
+        fases: fluxos.get(projeto.id) ?? projeto.fases,
+      })),
+    });
+    return true;
   },
 
   async adicionarLink(projetoId: string, label: string, url: string) {

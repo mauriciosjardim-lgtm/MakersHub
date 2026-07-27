@@ -4,6 +4,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -34,9 +35,13 @@ export function MarcoModal({
   const editando = !!marco;
   const [titulo, setTitulo] = useState("");
   const [data, setData] = useState("");
+  const [confirmandoRemocao, setConfirmandoRemocao] = useState(false);
+  const [removendo, setRemovendo] = useState(false);
 
   useEffect(() => {
     if (!open) return;
+    setConfirmandoRemocao(false);
+    setRemovendo(false);
     if (marco) {
       setTitulo(marco.titulo);
       setData(toLocalInput(marco.data));
@@ -62,11 +67,14 @@ export function MarcoModal({
     onClose();
   };
 
-  const remover = () => {
-    if (marco && confirm("Remover marco?")) {
-      projetosActions.removerMarco(marco.id);
-      onClose();
-    }
+  const remover = async () => {
+    if (!marco || removendo) return;
+    setRemovendo(true);
+    const removido = await projetosActions.removerMarco(marco.id);
+    setRemovendo(false);
+    if (!removido) return;
+    setConfirmandoRemocao(false);
+    onClose();
   };
 
   return (
@@ -99,7 +107,7 @@ export function MarcoModal({
             <Button
               variant="ghost"
               size="sm"
-              onClick={remover}
+              onClick={() => setConfirmandoRemocao(true)}
               className="text-destructive hover:text-destructive"
             >
               <Trash size={16} color="currentColor" variant="Linear" /> Remover
@@ -113,6 +121,29 @@ export function MarcoModal({
             </Button>
             <Button onClick={salvar}>{editando ? "Salvar" : "Criar"}</Button>
           </div>
+          <Dialog
+            open={confirmandoRemocao}
+            onOpenChange={(v) => !v && setConfirmandoRemocao(false)}
+          >
+            <DialogContent className="max-w-sm">
+              <DialogHeader>
+                <DialogTitle className="font-display">Remover marco?</DialogTitle>
+                <DialogDescription>Esta ação não pode ser desfeita.</DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setConfirmandoRemocao(false)}
+                  disabled={removendo}
+                >
+                  Cancelar
+                </Button>
+                <Button variant="destructive" onClick={remover} disabled={removendo}>
+                  {removendo ? "Removendo..." : "Remover"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </DialogFooter>
       </DialogContent>
     </Dialog>

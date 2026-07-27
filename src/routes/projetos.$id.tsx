@@ -23,6 +23,9 @@ import {
   DndContext,
   DragOverlay,
   PointerSensor,
+  TouchSensor,
+  KeyboardSensor,
+  closestCorners,
   useSensor,
   useSensors,
   useDroppable,
@@ -35,8 +38,10 @@ import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  FASES,
+  fasesParaIds,
+  faseParaId,
   PRIORIDADES,
+  serializarFaseToken,
   TIPOS_ENTREGAVEL,
   TIPO_ENTREGAVEL_ICONS,
   STATUS_ENTREGAVEL,
@@ -69,7 +74,9 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import { format, formatDistanceToNow, isSameDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { cn } from "@/lib/utils";
@@ -170,9 +177,7 @@ function ProjetoDetalhe() {
       </Link>
 
       {/* Cliente e troca de projetos em uma única faixa compacta */}
-      <section
-        className="flex flex-wrap items-stretch overflow-hidden rounded-2xl border border-border/70 bg-surface-1/30"
-      >
+      <section className="flex flex-wrap items-stretch overflow-hidden rounded-2xl border border-border/70 bg-surface-1/30">
         <div className="flex min-w-[190px] items-center gap-3 border-b border-border/60 px-3 py-2.5 sm:border-b-0 sm:border-r">
           <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-[color-mix(in_srgb,var(--cliente)_16%,transparent)] text-xs font-bold text-[var(--cliente)]">
             {iniciais(clientName)}
@@ -180,7 +185,8 @@ function ProjetoDetalhe() {
           <div className="min-w-0">
             <h2 className="truncate font-display text-sm font-semibold">{clientName}</h2>
             <p className="text-[10px] text-muted-foreground">
-              {projetosDoCliente.length} projeto{projetosDoCliente.length === 1 ? "" : "s"} cadastrado
+              {projetosDoCliente.length} projeto{projetosDoCliente.length === 1 ? "" : "s"}{" "}
+              cadastrado
               {projetosDoCliente.length === 1 ? "" : "s"}
             </p>
           </div>
@@ -200,10 +206,16 @@ function ProjetoDetalhe() {
                   p.arquivado && "opacity-45 hover:opacity-75",
                 )}
               >
-                {p.id === projeto?.id && <span className="absolute inset-y-2 left-0 w-0.5 rounded-r bg-primary" />}
+                {p.id === projeto?.id && (
+                  <span className="absolute inset-y-2 left-0 w-0.5 rounded-r bg-primary" />
+                )}
                 <p className="truncate text-xs font-semibold">{p.nome}</p>
                 <div className="mt-1.5 flex items-center justify-between gap-3 text-[9px]">
-                  <span>{p.arquivado ? "Fechado" : FASES[p.fase].label}</span>
+                  <span>
+                    {p.arquivado
+                      ? "Fechado"
+                      : `${resumo.total} tarefa${resumo.total === 1 ? "" : "s"}`}
+                  </span>
                   <span className="font-medium tabular-nums">{resumo.percentual}%</span>
                 </div>
               </button>
@@ -231,6 +243,7 @@ function ProjetoDetalhe() {
       {projeto ? (
         <ProjetoConteudo
           projeto={projeto}
+          projetos={projetos}
           tarefas={tarefas}
           marcos={marcos}
           entregaveis={entregaveis}
@@ -252,7 +265,9 @@ function ProjetoDetalhe() {
         nomeAtual={clientName}
         clientId={clientRecord?.id}
         quantidadeProjetos={projetosDoCliente.length}
-        quantidadeOportunidades={clientRecord ? crmLeads.filter((lead) => lead.empresaId === clientRecord.id).length : 0}
+        quantidadeOportunidades={
+          clientRecord ? crmLeads.filter((lead) => lead.empresaId === clientRecord.id).length : 0
+        }
       />
     </div>
   );
@@ -332,7 +347,11 @@ function EditarClienteDialog({
               </label>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setConfirmandoExclusao(false)} disabled={excluindo}>
+              <Button
+                variant="outline"
+                onClick={() => setConfirmandoExclusao(false)}
+                disabled={excluindo}
+              >
                 Voltar
               </Button>
               <Button
@@ -424,11 +443,13 @@ function EmptyClientWorkspace({
 
 function ProjetoConteudo({
   projeto,
+  projetos,
   tarefas,
   marcos,
   entregaveis,
 }: {
   projeto: Projeto;
+  projetos: Projeto[];
   tarefas: Tarefa[];
   marcos: Marco[];
   entregaveis: Entregavel[];
@@ -437,7 +458,11 @@ function ProjetoConteudo({
   const podeVerValor = (usuario as any)?.role === "admin";
   const id = projeto.id;
   const [editandoProjeto, setEditandoProjeto] = useState(false);
-  const [tarefaModal, setTarefaModal] = useState<{ open: boolean; tarefa?: Tarefa | null; faseInicial?: string }>({
+  const [tarefaModal, setTarefaModal] = useState<{
+    open: boolean;
+    tarefa?: Tarefa | null;
+    faseInicial?: string;
+  }>({
     open: false,
   });
   const [marcoModal, setMarcoModal] = useState<{ open: boolean; marco?: Marco | null }>({
@@ -447,11 +472,30 @@ function ProjetoConteudo({
     open: boolean;
     entregavel?: Entregavel | null;
   }>({ open: false });
+  const [confirmReplicacao, setConfirmReplicacao] = useState<{ open: boolean; projetoId: string }>({
+    open: false,
+    projetoId: "",
+  });
+  const [replicandoFluxo, setReplicandoFluxo] = useState(false);
+  const [confirmarFechamento, setConfirmarFechamento] = useState(false);
 
   const minhasTarefas = tarefas.filter((t) => t.projetoId === id);
   const projetoConcluido = minhasTarefas.length > 0 && minhasTarefas.every((t) => t.concluida);
   const meusMarcos = marcos.filter((m) => m.projetoId === id);
   const meusEntregaveis = entregaveis.filter((e) => e.projetoId === id);
+
+  const abrirConfirmacaoReplicacao = () =>
+    setConfirmReplicacao((s) => ({ ...s, open: true, projetoId: projeto.id }));
+
+  const confirmarReplicacao = async () => {
+    if (!confirmReplicacao.projetoId || replicandoFluxo) return;
+    setReplicandoFluxo(true);
+    const ok = await projetosActions.replicarFluxoParaTodos(confirmReplicacao.projetoId);
+    setReplicandoFluxo(false);
+    setConfirmReplicacao((s) => ({ ...s, open: false }));
+    if (ok) toast.success("Fluxo replicado para os demais projetos.");
+    else toast.error("Não foi possível replicar o fluxo no momento.");
+  };
 
   return (
     <div
@@ -467,12 +511,16 @@ function ProjetoConteudo({
               {projeto.arquivado ? "Projeto fechado" : "Em produção"}
             </span>
             <span className="text-[10px] text-muted-foreground">
-              Iniciado {formatDistanceToNow(new Date(projeto.dataInicio), { locale: ptBR, addSuffix: true })}
+              Iniciado{" "}
+              {formatDistanceToNow(new Date(projeto.dataInicio), { locale: ptBR, addSuffix: true })}
             </span>
           </div>
-          <h1 className="mt-2 truncate font-display text-2xl font-semibold tracking-tight">{projeto.nome}</h1>
+          <h1 className="mt-2 truncate font-display text-2xl font-semibold tracking-tight">
+            {projeto.nome}
+          </h1>
           <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">
-            {projeto.cliente}{projeto.descricao ? ` · ${projeto.descricao}` : " · Workspace de produção"}
+            {projeto.cliente}
+            {projeto.descricao ? ` · ${projeto.descricao}` : " · Workspace de produção"}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -482,11 +530,18 @@ function ProjetoConteudo({
               size="sm"
               onClick={async () => {
                 const fechar = !projeto.arquivado;
-                if (fechar && !confirm(`Fechar o projeto "${projeto.nome}"? As informações continuarão disponíveis.`)) return;
-                await projetosActions.atualizarProjeto(projeto.id, { arquivado: fechar });
+                if (fechar) {
+                  setConfirmarFechamento(true);
+                  return;
+                }
+                await projetosActions.atualizarProjeto(projeto.id, { arquivado: false });
               }}
             >
-              {projeto.arquivado ? <ArchiveRestore className="size-3.5" /> : <Archive className="size-3.5" />}
+              {projeto.arquivado ? (
+                <ArchiveRestore className="size-3.5" />
+              ) : (
+                <Archive className="size-3.5" />
+              )}
               {projeto.arquivado ? "Reabrir" : "Fechar"}
             </Button>
           )}
@@ -496,26 +551,75 @@ function ProjetoConteudo({
         </div>
       </header>
 
-      <section className={cn("grid overflow-hidden rounded-xl border border-border/70 bg-surface-1/30", podeVerValor ? "grid-cols-2 md:grid-cols-4" : "grid-cols-2 md:grid-cols-3")}>
+      <section
+        className={cn(
+          "grid overflow-hidden rounded-xl border border-border/70 bg-surface-1/30",
+          podeVerValor ? "grid-cols-2 md:grid-cols-4" : "grid-cols-2 md:grid-cols-3",
+        )}
+      >
         <div className="col-span-2 border-b border-border/60 p-3 md:col-span-1 md:border-b-0 md:border-r">
           <ResumoProgresso projeto={projeto} tarefas={minhasTarefas} />
         </div>
         {projeto.dataEntrega && (
-          <StatCard icon={Calendar} label="Prazo geral" valor={format(new Date(projeto.dataEntrega), "dd MMM yyyy", { locale: ptBR })} />
+          <StatCard
+            icon={Calendar}
+            label="Prazo geral"
+            valor={format(new Date(projeto.dataEntrega), "dd MMM yyyy", { locale: ptBR })}
+          />
         )}
-        {podeVerValor && <StatCard icon={DollarCircle} label="Valor" valor={`R$ ${projeto.valor.toLocaleString("pt-BR")}`} />}
-        <StatCard icon={Profile2User} label="Equipe" valor={`${projeto.equipe.length} pessoa${projeto.equipe.length === 1 ? "" : "s"}`} />
+        {podeVerValor && (
+          <StatCard
+            icon={DollarCircle}
+            label="Valor"
+            valor={`R$ ${projeto.valor.toLocaleString("pt-BR")}`}
+          />
+        )}
+        <StatCard
+          icon={Profile2User}
+          label="Equipe"
+          valor={`${projeto.equipe.length} pessoa${projeto.equipe.length === 1 ? "" : "s"}`}
+        />
       </section>
 
       <Tabs defaultValue="tarefas">
         <div className="max-w-full overflow-x-auto pb-1">
           <TabsList className="h-auto w-max min-w-full justify-start rounded-none border-b border-border/60 bg-transparent p-0">
-            <TabsTrigger className="rounded-none border-b-2 border-transparent px-4 py-2.5 data-[state=active]:border-primary data-[state=active]:bg-transparent" value="tarefas">Fluxo de produção ({minhasTarefas.length})</TabsTrigger>
-            <TabsTrigger className="rounded-none border-b-2 border-transparent px-4 py-2.5 data-[state=active]:border-primary data-[state=active]:bg-transparent" value="entregaveis">Entregáveis ({meusEntregaveis.length})</TabsTrigger>
-            <TabsTrigger className="rounded-none border-b-2 border-transparent px-4 py-2.5 data-[state=active]:border-primary data-[state=active]:bg-transparent" value="marcos">Marcos ({meusMarcos.length})</TabsTrigger>
-            <TabsTrigger className="rounded-none border-b-2 border-transparent px-4 py-2.5 data-[state=active]:border-primary data-[state=active]:bg-transparent" value="cliente">Área do cliente</TabsTrigger>
-            <TabsTrigger className="rounded-none border-b-2 border-transparent px-4 py-2.5 data-[state=active]:border-primary data-[state=active]:bg-transparent" value="info">Informações</TabsTrigger>
-            <TabsTrigger className="rounded-none border-b-2 border-transparent px-4 py-2.5 data-[state=active]:border-primary data-[state=active]:bg-transparent" value="equipe">Equipe</TabsTrigger>
+            <TabsTrigger
+              className="rounded-none border-b-2 border-transparent px-4 py-2.5 data-[state=active]:border-primary data-[state=active]:bg-transparent"
+              value="tarefas"
+            >
+              Fluxo de produção ({minhasTarefas.length})
+            </TabsTrigger>
+            <TabsTrigger
+              className="rounded-none border-b-2 border-transparent px-4 py-2.5 data-[state=active]:border-primary data-[state=active]:bg-transparent"
+              value="entregaveis"
+            >
+              Entregáveis ({meusEntregaveis.length})
+            </TabsTrigger>
+            <TabsTrigger
+              className="rounded-none border-b-2 border-transparent px-4 py-2.5 data-[state=active]:border-primary data-[state=active]:bg-transparent"
+              value="marcos"
+            >
+              Marcos ({meusMarcos.length})
+            </TabsTrigger>
+            <TabsTrigger
+              className="rounded-none border-b-2 border-transparent px-4 py-2.5 data-[state=active]:border-primary data-[state=active]:bg-transparent"
+              value="cliente"
+            >
+              Área do cliente
+            </TabsTrigger>
+            <TabsTrigger
+              className="rounded-none border-b-2 border-transparent px-4 py-2.5 data-[state=active]:border-primary data-[state=active]:bg-transparent"
+              value="info"
+            >
+              Informações
+            </TabsTrigger>
+            <TabsTrigger
+              className="rounded-none border-b-2 border-transparent px-4 py-2.5 data-[state=active]:border-primary data-[state=active]:bg-transparent"
+              value="equipe"
+            >
+              Equipe
+            </TabsTrigger>
           </TabsList>
         </div>
 
@@ -525,7 +629,9 @@ function ProjetoConteudo({
               <div className="mb-3 flex flex-wrap items-center justify-between gap-3 px-1">
                 <div>
                   <h2 className="text-sm font-semibold">Fluxo de produção</h2>
-                  <p className="mt-0.5 text-[10px] text-muted-foreground">Arraste entre etapas ou clique no card para editar.</p>
+                  <p className="mt-0.5 text-[10px] text-muted-foreground">
+                    Arraste entre etapas ou clique no card para editar.
+                  </p>
                 </div>
                 <Button size="sm" onClick={() => setTarefaModal({ open: true })}>
                   <Add size={15} color="currentColor" variant="Linear" /> Nova tarefa
@@ -534,10 +640,13 @@ function ProjetoConteudo({
               <div className="overflow-x-auto">
                 <KanbanTarefas
                   tarefas={minhasTarefas}
+                  todasTarefas={tarefas}
+                  projetos={projetos}
                   projetoId={projeto.id}
                   fases={projeto.fases ?? []}
                   onEditar={(t) => setTarefaModal({ open: true, tarefa: t })}
                   onNovaTarefa={(faseInicial) => setTarefaModal({ open: true, faseInicial })}
+                  onSolicitarReplicacao={abrirConfirmacaoReplicacao}
                 />
               </div>
             </section>
@@ -629,13 +738,7 @@ function ProjetoConteudo({
         projetoId={projeto.id}
         tarefa={tarefaModal.tarefa}
         fases={projeto.fases ?? []}
-        faseInicial={tarefaModal.faseInicial ?? (
-          projeto.fase === "pre"
-            ? "pre_producao"
-            : projeto.fase === "concluido"
-              ? "concluida"
-              : projeto.fase
-        )}
+        faseInicial={tarefaModal.faseInicial ?? faseParaId(projeto.fases?.[0] ?? "briefing")}
       />
       <MarcoModal
         open={marcoModal.open}
@@ -649,6 +752,62 @@ function ProjetoConteudo({
         projetoId={projeto.id}
         entregavel={entregavelModal.entregavel}
       />
+
+      <Dialog
+        open={confirmReplicacao.open}
+        onOpenChange={(open) => {
+          if (!open) setConfirmReplicacao({ open: false, projetoId: "" });
+        }}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="font-display">
+              Replicar fluxo para todos os clientes?
+            </DialogTitle>
+            <DialogDescription>
+              Você atualizou o fluxo deste projeto. Deseja replicá-lo para os outros clientes?
+              Etapas dos outros projetos que já contêm tarefas serão preservadas.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setConfirmReplicacao({ open: false, projetoId: "" })}
+            >
+              Agora não
+            </Button>
+            <Button onClick={confirmarReplicacao} disabled={replicandoFluxo}>
+              {replicandoFluxo ? "Aplicando…" : "Sim, replicar fluxo"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={confirmarFechamento} onOpenChange={setConfirmarFechamento}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="font-display">Fechar projeto?</DialogTitle>
+            <DialogDescription>
+              As informações do projeto ficarão disponíveis no histórico, mas ele sairá da visão de
+              produção.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmarFechamento(false)}>
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={async () => {
+                setConfirmarFechamento(false);
+                await projetosActions.atualizarProjeto(projeto.id, { arquivado: true });
+              }}
+            >
+              Fechar projeto
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -685,7 +844,9 @@ function ResumoProgresso({ projeto, tarefas }: { projeto: Projeto; tarefas: Tare
   return (
     <div>
       <div className="flex items-center justify-between">
-        <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Progresso geral</span>
+        <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+          Progresso geral
+        </span>
         <div className="flex items-center gap-2">
           <span
             className={cn("rounded-md border px-1.5 py-0.5 text-[10px] font-medium", saude.badge)}
@@ -721,20 +882,35 @@ function ResumoProgresso({ projeto, tarefas }: { projeto: Projeto; tarefas: Tare
   );
 }
 
-function PainelOperacional({ projeto, tarefas, marcos }: { projeto: Projeto; tarefas: Tarefa[]; marcos: Marco[] }) {
+function PainelOperacional({
+  projeto,
+  tarefas,
+  marcos,
+}: {
+  projeto: Projeto;
+  tarefas: Tarefa[];
+  marcos: Marco[];
+}) {
   const agenda = [
     ...tarefas
       .filter((t) => !t.concluida && t.prazo)
       .map((t) => ({ id: `t-${t.id}`, titulo: t.titulo, data: t.prazo!, detalhe: t.responsavel })),
     ...marcos
       .filter((m) => m.status === "pendente")
-      .map((m) => ({ id: `m-${m.id}`, titulo: m.titulo, data: m.data, detalhe: "Marco do projeto" })),
+      .map((m) => ({
+        id: `m-${m.id}`,
+        titulo: m.titulo,
+        data: m.data,
+        detalhe: "Marco do projeto",
+      })),
   ]
     .sort((a, b) => +new Date(a.data) - +new Date(b.data))
     .slice(0, 4);
   const links = (projeto.links ?? [])
     .map((link) => ({ ...link, seguro: linkSeguro(link.url) }))
-    .filter((link): link is typeof link & { seguro: NonNullable<ReturnType<typeof linkSeguro>> } => Boolean(link.seguro));
+    .filter((link): link is typeof link & { seguro: NonNullable<ReturnType<typeof linkSeguro>> } =>
+      Boolean(link.seguro),
+    );
 
   return (
     <aside className="space-y-3">
@@ -744,8 +920,17 @@ function PainelOperacional({ projeto, tarefas, marcos }: { projeto: Projeto; tar
         <div className="mt-4">
           {agenda.map((item, index) => (
             <div key={item.id} className="relative pb-4 pl-5 last:pb-0">
-              {index < agenda.length - 1 && <span className="absolute bottom-0 left-[5px] top-3 w-px bg-border/70" />}
-              <span className={cn("absolute left-0 top-1 size-[11px] rounded-full border-2 border-background", index === 0 ? "bg-primary shadow-[0_0_12px_hsl(var(--primary)/.45)]" : "bg-muted-foreground/40")} />
+              {index < agenda.length - 1 && (
+                <span className="absolute bottom-0 left-[5px] top-3 w-px bg-border/70" />
+              )}
+              <span
+                className={cn(
+                  "absolute left-0 top-1 size-[11px] rounded-full border-2 border-background",
+                  index === 0
+                    ? "bg-primary shadow-[0_0_12px_hsl(var(--primary)/.45)]"
+                    : "bg-muted-foreground/40",
+                )}
+              />
               <p className="text-[9px] font-medium uppercase tracking-wide text-muted-foreground">
                 {format(new Date(item.data), "dd MMM · HH:mm", { locale: ptBR })}
               </p>
@@ -753,7 +938,11 @@ function PainelOperacional({ projeto, tarefas, marcos }: { projeto: Projeto; tar
               <p className="mt-1 text-[9px] text-muted-foreground">{item.detalhe}</p>
             </div>
           ))}
-          {!agenda.length && <p className="rounded-xl border border-dashed border-border/50 px-3 py-6 text-center text-[10px] text-muted-foreground">Nenhum prazo ou marco pendente.</p>}
+          {!agenda.length && (
+            <p className="rounded-xl border border-dashed border-border/50 px-3 py-6 text-center text-[10px] text-muted-foreground">
+              Nenhum prazo ou marco pendente.
+            </p>
+          )}
         </div>
       </section>
 
@@ -771,11 +960,17 @@ function PainelOperacional({ projeto, tarefas, marcos }: { projeto: Projeto; tar
             >
               <Link2 size={13} color="currentColor" variant="Linear" className="text-primary" />
               <p className="mt-2 truncate text-[10px] font-semibold">{link.label}</p>
-              <p className="mt-0.5 truncate text-[8px] text-muted-foreground">{link.seguro.dominio}</p>
+              <p className="mt-0.5 truncate text-[8px] text-muted-foreground">
+                {link.seguro.dominio}
+              </p>
             </a>
           ))}
         </div>
-        {!links.length && <p className="mt-3 rounded-xl border border-dashed border-border/50 px-3 py-4 text-center text-[9px] leading-relaxed text-muted-foreground">Adicione Drive, Frame.io ou briefing em Informações.</p>}
+        {!links.length && (
+          <p className="mt-3 rounded-xl border border-dashed border-border/50 px-3 py-4 text-center text-[9px] leading-relaxed text-muted-foreground">
+            Adicione Drive, Frame.io ou briefing em Informações.
+          </p>
+        )}
       </section>
     </aside>
   );
@@ -794,38 +989,136 @@ const SUGESTOES_FASE = [
 
 function KanbanTarefas({
   tarefas,
+  todasTarefas,
+  projetos,
   projetoId,
   fases,
   onEditar,
   onNovaTarefa,
+  onSolicitarReplicacao,
 }: {
   tarefas: Tarefa[];
+  todasTarefas: Tarefa[];
+  projetos: Projeto[];
   projetoId: string;
   fases: string[];
   onEditar: (t: Tarefa) => void;
   onNovaTarefa: (faseInicial: string) => void;
+  onSolicitarReplicacao?: () => void;
 }) {
   const [adicionando, setAdicionando] = useState(false);
   const [novaFase, setNovaFase] = useState("");
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [faseEditando, setFaseEditando] = useState<{
+    raw: string;
+    id: string;
+    label: string;
+  } | null>(null);
+  const [faseRemovendo, setFaseRemovendo] = useState<{
+    raw: string;
+    id: string;
+    label: string;
+  } | null>(null);
+  const [removendoFase, setRemovendoFase] = useState(false);
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  const colunas = fases.map((fase) => ({
+    raw: fase,
+    id: faseParaId(fase),
+    label: getFaseInfo(fase).label,
+  }));
+  const idsSet = new Set(fasesParaIds(fases));
+
+  const tokenDuplicadoEmOutraColuna = (id: string, faseAtual?: string) => {
+    const alvo = faseParaId(id);
+    if (!alvo) return false;
+    return colunas.some((col) => col.id === alvo && col.id !== faseAtual);
+  };
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 8 } }),
+    useSensor(KeyboardSensor),
+  );
 
   const confirmarNovaFase = (nome: string) => {
     const n = nome.trim();
     if (!n) return;
-    projetosActions.adicionarFase(projetoId, n);
+
+    const novoId = faseParaId(n);
+    if (tokenDuplicadoEmOutraColuna(novoId)) {
+      toast.error("Já existe uma etapa com esse nome nesta rotina.");
+      return;
+    }
+
+    void projetosActions.adicionarFase(projetoId, n).then(() => {
+      onSolicitarReplicacao?.();
+    });
     setNovaFase("");
     setAdicionando(false);
   };
+
+  const renomearFase = (faseId: string, label: string) => {
+    const novoLabel = label.trim();
+    const atual = colunas.find((c) => c.id === faseId)?.label.trim() ?? "";
+    if (!novoLabel || novoLabel === atual) {
+      setFaseEditando(null);
+      return true;
+    }
+
+    if (tokenDuplicadoEmOutraColuna(novoLabel, faseId)) {
+      toast.error("Já existe uma etapa com esse nome nesta rotina.");
+      return false;
+    }
+
+    const token = serializarFaseToken(faseId, novoLabel);
+    const nova = fases.map((f) => (faseParaId(f) === faseId ? token : f));
+    void projetosActions.atualizarProjeto(projetoId, { fases: nova }).then(() => {
+      onSolicitarReplicacao?.();
+    });
+    return true;
+  };
+
+  const removerFaseSelecionada = async () => {
+    if (!faseRemovendo || removendoFase) return;
+    setRemovendoFase(true);
+    try {
+      const resultado = await projetosActions.removerFaseDeTodos(faseRemovendo.id);
+      if (resultado) {
+        toast.success(
+          `Coluna removida de ${resultado.projetos} projeto${resultado.projetos === 1 ? "" : "s"}.`,
+        );
+        setFaseRemovendo(null);
+      } else {
+        toast.error("Não foi possível remover esta coluna.");
+      }
+    } catch {
+      toast.error("Não foi possível remover esta coluna.");
+    } finally {
+      setRemovendoFase(false);
+    }
+  };
+
+  const tarefasNaFase = faseRemovendo
+    ? todasTarefas.filter((tarefa) => faseParaId(tarefa.status) === faseRemovendo.id)
+    : [];
+  const projetosComTarefaNaFase = new Set(tarefasNaFase.map((tarefa) => tarefa.projetoId));
+  const projetosComFase = faseRemovendo
+    ? projetos.filter(
+        (item) =>
+          (item.fases ?? []).some((fase) => faseParaId(fase) === faseRemovendo.id) ||
+          projetosComTarefaNaFase.has(item.id),
+      )
+    : [];
+  const clientesAfetados = new Set(projetosComFase.map((item) => item.cliente)).size;
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     setDraggingId(null);
     if (!over || active.id === over.id) return;
-    const novaFaseId = String(over.id);
-    if (fases.includes(novaFaseId)) {
-      projetosActions.atualizarTarefa(String(active.id), { status: novaFaseId });
+    const novaFaseRaw = String(over.id);
+    const novaFaseId = faseParaId(novaFaseRaw);
+    if (idsSet.has(novaFaseId)) {
+      void projetosActions.atualizarTarefa(String(active.id), { status: novaFaseId });
     }
   };
 
@@ -834,30 +1127,38 @@ function KanbanTarefas({
   return (
     <DndContext
       sensors={sensors}
+      collisionDetection={closestCorners}
       onDragStart={(e) => setDraggingId(String(e.active.id))}
+      onDragCancel={() => setDraggingId(null)}
       onDragEnd={handleDragEnd}
     >
       <div className="flex gap-3 overflow-x-auto pb-4">
-        {fases.map((faseId, idx) => {
-          const info = getFaseInfo(faseId);
-          const items = tarefas.filter((t) => t.status === faseId);
-          const isConcluida = faseId === "concluida";
+        {colunas.map((col, idx) => {
+          const items = tarefas.filter((t) => faseParaId(t.status) === col.id);
+          const isConcluida = col.id === "concluida";
           return (
             <KanbanColuna
-              key={faseId}
-              faseId={faseId}
-              label={info.label}
+              key={col.raw}
+              faseId={col.raw}
+              label={col.label}
+              onStartEditarNome={() =>
+                setFaseEditando({ raw: col.raw, id: col.id, label: col.label })
+              }
               isConcluida={isConcluida}
               podeEsquerda={idx > 0}
               podeDireita={idx < fases.length - 1}
-              onMover={(dir) => projetosActions.moverFase(projetoId, faseId, dir)}
+              onMover={(dir) => {
+                void projetosActions.moverFase(projetoId, col.id, dir).then(() => {
+                  onSolicitarReplicacao?.();
+                });
+              }}
               onRemover={
-                items.length === 0 && !isConcluida
-                  ? () => projetosActions.removerFase(projetoId, faseId)
+                !isConcluida
+                  ? () => setFaseRemovendo({ raw: col.raw, id: col.id, label: col.label })
                   : undefined
               }
               count={items.length}
-              onNovaTarefa={() => onNovaTarefa(faseId)}
+              onNovaTarefa={() => onNovaTarefa(col.id)}
             >
               {items.map((t) => (
                 <TarefaCard
@@ -886,7 +1187,7 @@ function KanbanTarefas({
                 Nova fase
               </p>
               <div className="flex flex-wrap gap-1">
-                {SUGESTOES_FASE.filter((s) => !fases.includes(s.toLowerCase().replace(/\s+/g, "_")))
+                {SUGESTOES_FASE.filter((s) => !idsSet.has(s.toLowerCase().replace(/\s+/g, "_")))
                   .slice(0, 6)
                   .map((s) => (
                     <button
@@ -898,7 +1199,7 @@ function KanbanTarefas({
                     </button>
                   ))}
               </div>
-              <input
+              <Input
                 autoFocus
                 value={novaFase}
                 onChange={(e) => setNovaFase(e.target.value)}
@@ -932,6 +1233,103 @@ function KanbanTarefas({
         </div>
       </div>
 
+      <Dialog open={Boolean(faseEditando)} onOpenChange={(v) => !v && setFaseEditando(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="font-display">Editar nome da etapa</DialogTitle>
+            <DialogDescription>
+              Escolha um nome mais claro para esta coluna do fluxo deste projeto.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1.5">
+            <Label htmlFor="filtro-fase-nome" className="text-[11px] text-muted-foreground">
+              Nome da etapa
+            </Label>
+            <Input
+              id="filtro-fase-nome"
+              autoFocus
+              value={faseEditando?.label ?? ""}
+              maxLength={60}
+              onChange={(e) =>
+                setFaseEditando((prev) => (prev ? { ...prev, label: e.target.value } : prev))
+              }
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  if (faseEditando && renomearFase(faseEditando.id, faseEditando.label)) {
+                    setFaseEditando(null);
+                  }
+                }
+                if (e.key === "Escape") setFaseEditando(null);
+              }}
+              placeholder="Ex.: Aprovação interna"
+              className="h-11"
+            />
+            <p className="text-[10px] text-muted-foreground">
+              Até 60 caracteres · Isso atualiza só o nome dessa etapa neste projeto.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setFaseEditando(null)}>
+              Cancelar
+            </Button>
+            <Button
+              disabled={!faseEditando?.label.trim()}
+              onClick={() => {
+                if (faseEditando && renomearFase(faseEditando.id, faseEditando.label)) {
+                  setFaseEditando(null);
+                }
+              }}
+            >
+              Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(faseRemovendo)}
+        onOpenChange={(v) => !v && !removendoFase && setFaseRemovendo(null)}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="font-display">Excluir coluna de todos os fluxos?</DialogTitle>
+            <DialogDescription>
+              Se esta coluna existir em outros clientes, ela também será apagada.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+              Coluna: <strong>{faseRemovendo?.label}</strong>
+            </p>
+            <p className="text-xs leading-5 text-muted-foreground">
+              A exclusão afetará {projetosComFase.length} projeto
+              {projetosComFase.length === 1 ? "" : "s"} em {clientesAfetados} cliente
+              {clientesAfetados === 1 ? "" : "s"}.
+              {tarefasNaFase.length > 0 && (
+                <>
+                  {" "}
+                  As {tarefasNaFase.length} tarefa{tarefasNaFase.length === 1 ? "" : "s"} desta
+                  etapa serão movidas para a etapa vizinha de cada fluxo, sem perda de conteúdo.
+                </>
+              )}
+            </p>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setFaseRemovendo(null)}
+              disabled={removendoFase}
+            >
+              Cancelar
+            </Button>
+            <Button variant="destructive" onClick={removerFaseSelecionada} disabled={removendoFase}>
+              {removendoFase ? "Excluindo…" : "Excluir em todos"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <DragOverlay>
         {draggingTarefa && (
           <TarefaCard tarefa={draggingTarefa} onEditar={() => {}} isDragging overlay />
@@ -944,6 +1342,7 @@ function KanbanTarefas({
 function KanbanColuna({
   faseId,
   label,
+  onStartEditarNome,
   isConcluida,
   podeEsquerda,
   podeDireita,
@@ -955,6 +1354,7 @@ function KanbanColuna({
 }: {
   faseId: string;
   label: string;
+  onStartEditarNome?: () => void;
   isConcluida: boolean;
   podeEsquerda: boolean;
   podeDireita: boolean;
@@ -965,6 +1365,7 @@ function KanbanColuna({
   children: React.ReactNode;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: faseId });
+
   return (
     <div
       ref={setNodeRef}
@@ -979,7 +1380,13 @@ function KanbanColuna({
           className="absolute -right-[7px] inset-y-1 w-px bg-gradient-to-b from-transparent via-border/80 to-transparent"
         />
       )}
-      <div className={cn("mb-3 flex h-11 items-center gap-1 rounded-xl border bg-surface-1/70 px-2.5 shadow-sm", isConcluida ? "border-muted-foreground/20" : "border-border/70", isOver && "border-primary/60")}>
+      <div
+        className={cn(
+          "mb-3 flex h-11 items-center gap-1 rounded-xl border bg-surface-1/70 px-2.5 shadow-sm",
+          isConcluida ? "border-muted-foreground/20" : "border-border/70",
+          isOver && "border-primary/60",
+        )}
+      >
         <button
           onClick={() => onMover(-1)}
           disabled={!podeEsquerda}
@@ -992,9 +1399,18 @@ function KanbanColuna({
             "flex-1 truncate text-xs font-semibold uppercase tracking-[.12em]",
             isConcluida ? "text-muted-foreground/60" : "text-muted-foreground",
           )}
+          onDoubleClick={() => onStartEditarNome?.()}
         >
           {label}
         </h3>
+        <button
+          type="button"
+          onClick={onStartEditarNome}
+          className="rounded p-0.5 text-muted-foreground/40 transition hover:text-muted-foreground"
+          title="Renomear coluna"
+        >
+          <Edit2 size={12} color="currentColor" variant="Linear" />
+        </button>
         {count > 0 && (
           <span className="grid size-6 place-items-center rounded-full bg-surface-2 text-[10px] font-medium tabular-nums text-muted-foreground">
             {count}
@@ -1058,10 +1474,16 @@ function TarefaCard({
       : format(prazo, "dd MMM", { locale: ptBR })
     : null;
   const prioridadeVisual = {
-    baixa: { acento: "bg-muted-foreground/50", badge: "border-border/70 bg-surface-2 text-muted-foreground" },
+    baixa: {
+      acento: "bg-muted-foreground/50",
+      badge: "border-border/70 bg-surface-2 text-muted-foreground",
+    },
     media: { acento: "bg-info", badge: "border-info/25 bg-info/10 text-info" },
     alta: { acento: "bg-amber-400", badge: "border-amber-400/25 bg-amber-400/10 text-amber-300" },
-    urgente: { acento: "bg-destructive", badge: "border-destructive/25 bg-destructive/10 text-destructive" },
+    urgente: {
+      acento: "bg-destructive",
+      badge: "border-destructive/25 bg-destructive/10 text-destructive",
+    },
   }[tarefa.prioridade];
   const style =
     transform && !overlay
@@ -1077,12 +1499,18 @@ function TarefaCard({
         isDragging && !overlay && "opacity-40",
         overlay && "shadow-xl rotate-1 scale-105",
         tarefa.concluida && "opacity-65",
-        !isDragging && "hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-[0_18px_40px_-24px_hsl(var(--primary)/.3)]",
+        !isDragging &&
+          "hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-[0_18px_40px_-24px_hsl(var(--primary)/.3)]",
       )}
     >
       <span className={cn("absolute inset-y-0 left-0 w-[3px]", prioridadeVisual.acento)} />
       <div className="flex items-center justify-between gap-2">
-        <span className={cn("rounded-full border px-2 py-1 text-[8px] font-bold uppercase tracking-[.1em]", prioridadeVisual.badge)}>
+        <span
+          className={cn(
+            "rounded-full border px-2 py-1 text-[8px] font-bold uppercase tracking-[.1em]",
+            prioridadeVisual.badge,
+          )}
+        >
           {prio.label}
         </span>
         <div className="flex items-center gap-1">
@@ -1094,45 +1522,61 @@ function TarefaCard({
             className="grid size-7 place-items-center rounded-lg text-muted-foreground transition hover:bg-surface-2 hover:text-primary"
             title={tarefa.concluida ? "Marcar como pendente" : "Marcar como concluída"}
           >
-            {tarefa.concluida ? <TickCircle size={17} color="currentColor" variant="Bulk" className="text-success" /> : <Circle className="size-[17px]" />}
+            {tarefa.concluida ? (
+              <TickCircle size={17} color="currentColor" variant="Bulk" className="text-success" />
+            ) : (
+              <Circle className="size-[17px]" />
+            )}
           </button>
           <button
             {...listeners}
             {...attributes}
-            className="grid size-7 shrink-0 cursor-grab touch-none place-items-center rounded-lg text-muted-foreground/40 opacity-0 transition group-hover:opacity-100 hover:bg-surface-2 hover:text-muted-foreground active:cursor-grabbing"
+            className="grid size-8 shrink-0 cursor-grab touch-none place-items-center rounded-lg text-muted-foreground/70 transition md:opacity-0 md:group-hover:opacity-100 hover:bg-surface-2 hover:text-muted-foreground active:cursor-grabbing"
+            aria-label={`Arrastar ${tarefa.titulo} para outra fase`}
             title="Arrastar para outra fase"
           >
             <svg className="size-3.5" viewBox="0 0 16 16" fill="currentColor">
-              <circle cx="5" cy="4" r="1.2" /><circle cx="5" cy="8" r="1.2" /><circle cx="5" cy="12" r="1.2" />
-              <circle cx="11" cy="4" r="1.2" /><circle cx="11" cy="8" r="1.2" /><circle cx="11" cy="12" r="1.2" />
+              <circle cx="5" cy="4" r="1.2" />
+              <circle cx="5" cy="8" r="1.2" />
+              <circle cx="5" cy="12" r="1.2" />
+              <circle cx="11" cy="4" r="1.2" />
+              <circle cx="11" cy="8" r="1.2" />
+              <circle cx="11" cy="12" r="1.2" />
             </svg>
           </button>
         </div>
       </div>
 
       <button onClick={onEditar} className="mt-3 block w-full text-left">
-          <p
-            className={cn(
-              "text-[13px] font-semibold leading-snug tracking-[-.01em]",
-              tarefa.concluida && "text-muted-foreground line-through",
-            )}
-          >
-            {tarefa.titulo}
-          </p>
-          {tarefa.descricao && (
-            <p className="mt-2 line-clamp-2 text-[10px] leading-[1.55] text-muted-foreground">
-              {tarefa.descricao}
-            </p>
+        <p
+          className={cn(
+            "text-[13px] font-semibold leading-snug tracking-[-.01em]",
+            tarefa.concluida && "text-muted-foreground line-through",
           )}
+        >
+          {tarefa.titulo}
+        </p>
+        {tarefa.descricao && (
+          <p className="mt-2 line-clamp-2 text-[10px] leading-[1.55] text-muted-foreground">
+            {tarefa.descricao}
+          </p>
+        )}
       </button>
 
       <div className="mt-4 flex items-center gap-2 border-t border-border/50 pt-3">
         <span className="grid size-6 shrink-0 place-items-center rounded-full bg-primary/12 text-[8px] font-bold text-primary ring-1 ring-primary/20">
           {iniciais(tarefa.responsavel)}
         </span>
-        <span className="min-w-0 flex-1 truncate text-[9px] font-medium text-muted-foreground">{tarefa.responsavel}</span>
+        <span className="min-w-0 flex-1 truncate text-[9px] font-medium text-muted-foreground">
+          {tarefa.responsavel}
+        </span>
         {prazoLabel && (
-          <span className={cn("inline-flex items-center gap-1 whitespace-nowrap text-[9px] font-medium tabular-nums", atrasada ? "text-destructive" : "text-muted-foreground")}>
+          <span
+            className={cn(
+              "inline-flex items-center gap-1 whitespace-nowrap text-[9px] font-medium tabular-nums",
+              atrasada ? "text-destructive" : "text-muted-foreground",
+            )}
+          >
             <Calendar size={11} color="currentColor" variant="Linear" /> {prazoLabel}
           </span>
         )}

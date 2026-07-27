@@ -40,6 +40,7 @@ import {
   type PortalProject,
 } from "@/lib/portal-cliente";
 import { portalSupabase } from "@/lib/portal-supabase";
+import { getReviewEmbedUrl } from "@/lib/client-reviews";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/portal/$token")({
@@ -1260,15 +1261,19 @@ function ApprovalCard({
 }) {
   const [requestingChanges, setRequestingChanges] = useState(false);
   const [feedback, setFeedback] = useState("");
+  // Registros publicados antes da coluna embed_url existir continuam
+  // reproduzíveis: o player é reconstruído a partir do link original.
+  const embedUrl = item.embed_url || (item.url ? getReviewEmbedUrl(item.url) : null);
   return (
     <article className="group overflow-hidden rounded-3xl border border-white/[0.09] bg-white/[0.025] transition hover:border-[var(--portal-accent)]/25">
       <div className="relative aspect-video overflow-hidden bg-black">
-        {item.embed_url ? (
+        {embedUrl ? (
           <iframe
-            src={item.embed_url}
+            src={embedUrl}
             title={`${item.title} ${item.version_label || ""}`}
             className="absolute inset-0 size-full"
-            allow="autoplay; fullscreen"
+            allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+            allowFullScreen
           />
         ) : cover ? (
           <img
@@ -1279,7 +1284,7 @@ function ApprovalCard({
         ) : (
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(163,255,43,.08),transparent_55%),#0c0e0c]" />
         )}
-        {!item.embed_url && (
+        {!embedUrl && (
           <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-black/35" />
         )}
         <div className="absolute inset-x-0 top-0 flex items-center justify-between p-4">
@@ -1294,7 +1299,7 @@ function ApprovalCard({
             {item.version_label || item.type}
           </span>
         </div>
-        {!item.embed_url && item.url && (
+        {!embedUrl && item.url && (
           <a
             href={item.url}
             target="_blank"

@@ -1,4 +1,5 @@
 import type { Projeto, Tarefa } from "@/lib/mock/projetos";
+import { isProjetoAtivo } from "@/lib/mock/projetos";
 import type { Evento } from "@/lib/mock/agenda";
 import type { Lancamento } from "@/lib/mock/financeiro";
 import type { Lead, Empresa } from "@/lib/mock/comercial";
@@ -19,7 +20,7 @@ export function responderAssistant(pergunta: string, d: AssistantDados): string 
   const q = norm(pergunta.trim());
   if (!q) return "Escreva uma pergunta sobre a operação.";
   const agora = new Date();
-  const ativos = d.projetos.filter(p => !p.arquivado && !["concluido", "pausado"].includes(p.fase));
+  const ativos = d.projetos.filter(isProjetoAtivo);
   const abertas = d.tarefas.filter(t => !t.concluida);
   const concluidas = d.tarefas.filter(t => t.concluida);
   const atrasadas = abertas.filter(t => t.prazo && new Date(t.prazo) < agora);
