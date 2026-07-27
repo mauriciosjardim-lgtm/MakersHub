@@ -673,6 +673,10 @@ export interface Database {
     Views: Record<string, never>;
     Functions: {
       minha_empresa_id: { Args: Record<string, never>; Returns: string };
+      importar_contatos_comercial: {
+        Args: { p_contatos: Json; p_modo?: "ignorar" | "atualizar" };
+        Returns: Json;
+      };
       criar_empresa_onboarding: {
         Args: {
           p_nome: string;

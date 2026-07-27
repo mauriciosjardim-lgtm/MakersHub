@@ -682,73 +682,24 @@ export const comercial = {
     return id ? { id, existente: false } : null;
   },
 
-  async importarContatos(contatos: ContatoImportado[]) {
-    const empresa_id = await getEmpresaId();
-    const empresasPorNome = new Map(
-      store.empresas.map((empresa) => [normalizarTexto(empresa.nome), empresa]),
-    );
-    const chavesConhecidas = new Set(
-      store.contatos.flatMap((contato) => {
-        const empresa = store.empresas.find((item) => item.id === contato.empresaId);
-        return empresa ? [chaveContato({ ...contato, empresa: empresa.nome })] : [];
-      }),
-    );
-    const unicos: ContatoImportado[] = [];
-    let ignorados = 0;
-
-    for (const contato of contatos) {
-      const chave = chaveContato(contato);
-      if (chavesConhecidas.has(chave)) {
-        ignorados += 1;
-        continue;
-      }
-      chavesConhecidas.add(chave);
-      unicos.push(contato);
-    }
-
-    const empresasCriadasAntes = store.empresas.length;
-    const idsEmpresa = new Map<string, string>();
-    for (const contato of unicos) {
-      const chaveEmpresa = normalizarTexto(contato.empresa);
-      if (idsEmpresa.has(chaveEmpresa)) continue;
-      const empresaExistente = empresasPorNome.get(chaveEmpresa);
-      const empresa = empresaExistente ?? (await comercial.criarCliente({ nome: contato.empresa }));
-      if (!empresa) return null;
-      empresasPorNome.set(chaveEmpresa, empresa);
-      idsEmpresa.set(chaveEmpresa, empresa.id);
-    }
-
-    if (unicos.length === 0) {
-      return { importados: 0, ignorados, empresasCriadas: 0 };
-    }
-
-    const empresasComContato = new Set(store.contatos.map((contato) => contato.empresaId));
-    const { data, error } = await supabase
-      .from("contatos_comercial")
-      .insert(
-        unicos.map((contato) => {
-          const clienteId = idsEmpresa.get(normalizarTexto(contato.empresa));
-          if (!clienteId) throw new Error("Empresa não encontrada durante a importação.");
-          const primeiroDaEmpresa = !empresasComContato.has(clienteId);
-          empresasComContato.add(clienteId);
-          return {
-            empresa_id,
-            cliente_id: clienteId,
-            nome: contato.nome.trim(),
-            cargo: valorContatoOuVazio(contato.cargo) || "—",
-            email: valorContatoOuVazio(contato.email) || "—",
-            telefone: valorContatoOuVazio(contato.telefone) || "—",
-            principal: contato.principal || primeiroDaEmpresa,
-          };
-        }),
-      )
-      .select();
-    if (dbErro(error, "importar contatos") || !data) return null;
-    setStore({ contatos: [...store.contatos, ...data.map(rowToContato)] });
+  async importarContatos(contatos: ContatoImportado[], modo: "ignorar" | "atualizar" = "ignorar") {
+    const { data, error } = await supabase.rpc("importar_contatos_comercial", {
+      p_contatos: contatos as unknown as Json,
+      p_modo: modo,
+    });
+    if (dbErro(error, "importar contatos") || !data || typeof data !== "object") return null;
+    const resultado = data as {
+      importados?: number;
+      atualizados?: number;
+      ignorados?: number;
+      empresasCriadas?: number;
+    };
+    await refresh();
     return {
-      importados: data.length,
-      ignorados,
-      empresasCriadas: Math.max(0, store.empresas.length - empresasCriadasAntes),
+      importados: Number(resultado.importados ?? 0),
+      atualizados: Number(resultado.atualizados ?? 0),
+      ignorados: Number(resultado.ignorados ?? 0),
+      empresasCriadas: Number(resultado.empresasCriadas ?? 0),
     };
   },
 

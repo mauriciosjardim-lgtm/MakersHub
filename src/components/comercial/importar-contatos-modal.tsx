@@ -1,12 +1,18 @@
 import { useMemo, useRef, useState } from "react";
-import { FileSpreadsheet, UploadCloud } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Download, FileSpreadsheet, UploadCloud } from "lucide-react";
 import { toast } from "sonner";
-import { comercial } from "@/lib/hooks/useComercial";
+import { comercial, useComercial } from "@/lib/hooks/useComercial";
 import {
-  converterLinhasEmContatos,
+  analisarLinhasContatos,
+  chaveContato,
+  descreverMotivoLinhaContato,
+  gerarCsvRelatorioImportacao,
   inferirMapeamento,
-  parsePlanilhaContatos,
+  LIMITE_ARQUIVO_CONTATOS,
+  LIMITE_LINHAS_CONTATOS,
+  parseArquivoContatos,
   type CampoContatoImportacao,
+  type LinhaContatoAnalisada,
   type MapeamentoContatos,
   type PlanilhaContatos,
 } from "@/lib/comercial/contatos-importacao";
@@ -47,39 +53,73 @@ export function ImportarContatosModal({
   const [planilha, setPlanilha] = useState<PlanilhaContatos | null>(null);
   const [mapeamento, setMapeamento] = useState<MapeamentoContatos>({});
   const [importando, setImportando] = useState(false);
+  const [modoDuplicados, setModoDuplicados] = useState<"ignorar" | "atualizar">("ignorar");
+  const [resultadoFinal, setResultadoFinal] = useState<{
+    importados: number;
+    atualizados: number;
+    ignorados: number;
+    empresasCriadas: number;
+  } | null>(null);
+  const [relatorioFinal, setRelatorioFinal] = useState<LinhaContatoAnalisada[]>([]);
+  const empresas = useComercial((store) => store.empresas);
+  const contatosCadastrados = useComercial((store) => store.contatos);
 
-  const contatos = useMemo(
-    () => (planilha ? converterLinhasEmContatos(planilha.linhas, mapeamento) : []),
-    [mapeamento, planilha],
+  const chavesExistentes = useMemo(() => {
+    const empresasPorId = new Map(empresas.map((empresa) => [empresa.id, empresa.nome]));
+    return new Set(
+      contatosCadastrados.flatMap((contato) => {
+        const empresa = empresasPorId.get(contato.empresaId);
+        return empresa ? [chaveContato({ ...contato, empresa })] : [];
+      }),
+    );
+  }, [contatosCadastrados, empresas]);
+
+  const analise = useMemo(
+    () => (planilha ? analisarLinhasContatos(planilha.linhas, mapeamento, chavesExistentes) : []),
+    [chavesExistentes, mapeamento, planilha],
   );
   const obrigatoriosMapeados = mapeamento.nome !== undefined && mapeamento.empresa !== undefined;
-  const descartadas = planilha ? planilha.linhas.length - contatos.length : 0;
+  const invalidas = analise.filter((linha) => linha.erros.length > 0);
+  const repetidasArquivo = analise.filter((linha) => linha.avisos.includes("duplicado_arquivo"));
+  const repetidasExistentes = analise.filter((linha) =>
+    linha.avisos.includes("duplicado_existente"),
+  );
+  const linhasParaImportar = analise.filter(
+    (linha) =>
+      linha.importavel &&
+      (modoDuplicados === "atualizar" || !linha.avisos.includes("duplicado_existente")),
+  );
 
   const limpar = () => {
     setArquivoNome("");
     setPlanilha(null);
     setMapeamento({});
+    setModoDuplicados("ignorar");
+    setResultadoFinal(null);
+    setRelatorioFinal([]);
     if (inputRef.current) inputRef.current.value = "";
   };
 
   const carregarArquivo = async (arquivo?: File) => {
     if (!arquivo) return;
     const extensao = arquivo.name.split(".").pop()?.toLowerCase();
-    if (!extensao || !["csv", "tsv", "txt"].includes(extensao)) {
-      toast.error("Use um arquivo CSV ou TSV exportado da sua planilha.");
+    if (!extensao || !["csv", "tsv", "txt", "xlsx"].includes(extensao)) {
+      toast.error("Use um arquivo CSV, TSV ou XLSX.");
+      return;
+    }
+    if (arquivo.size > LIMITE_ARQUIVO_CONTATOS) {
+      toast.error("O arquivo ultrapassa o limite seguro de 5 MB.");
       return;
     }
     try {
       const buffer = await arquivo.arrayBuffer();
-      let conteudo: string;
-      try {
-        conteudo = new TextDecoder("utf-8", { fatal: true }).decode(buffer);
-      } catch {
-        conteudo = new TextDecoder("windows-1252").decode(buffer);
-      }
-      const resultado = parsePlanilhaContatos(conteudo);
+      const resultado = await parseArquivoContatos(arquivo.name, buffer);
       if (resultado.cabecalhos.length < 2 || resultado.linhas.length === 0) {
         toast.error("O arquivo precisa ter cabeçalho e pelo menos uma linha de contato.");
+        return;
+      }
+      if (resultado.linhas.length > LIMITE_LINHAS_CONTATOS) {
+        toast.error("A planilha ultrapassa o limite seguro de 5.000 linhas.");
         return;
       }
       setArquivoNome(arquivo.name);
@@ -91,9 +131,14 @@ export function ImportarContatosModal({
   };
 
   const importar = async () => {
-    if (!planilha || !obrigatoriosMapeados || contatos.length === 0) return;
+    if (!planilha || !obrigatoriosMapeados || linhasParaImportar.length === 0) return;
+    const analiseConfirmada = analise;
+    const quantidadeEnviada = linhasParaImportar.length;
     setImportando(true);
-    const resultado = await comercial.importarContatos(contatos);
+    const resultado = await comercial.importarContatos(
+      linhasParaImportar.map((linha) => linha.contato),
+      modoDuplicados,
+    );
     setImportando(false);
     if (!resultado) {
       toast.error(
@@ -101,18 +146,12 @@ export function ImportarContatosModal({
       );
       return;
     }
-    const detalhes = [
-      `${resultado.importados} importado${resultado.importados === 1 ? "" : "s"}`,
-      resultado.ignorados
-        ? `${resultado.ignorados} repetido${resultado.ignorados === 1 ? "" : "s"} ignorado${resultado.ignorados === 1 ? "" : "s"}`
-        : "",
-      resultado.empresasCriadas
-        ? `${resultado.empresasCriadas} empresa${resultado.empresasCriadas === 1 ? "" : "s"} criada${resultado.empresasCriadas === 1 ? "" : "s"}`
-        : "",
-    ].filter(Boolean);
-    toast.success(`Importação concluída: ${detalhes.join(" · ")}.`);
-    limpar();
-    onOpenChange(false);
+    setResultadoFinal({
+      ...resultado,
+      ignorados: resultado.ignorados + (analiseConfirmada.length - quantidadeEnviada),
+    });
+    setRelatorioFinal(analiseConfirmada);
+    toast.success("Importação concluída com segurança.");
   };
 
   return (
@@ -123,7 +162,7 @@ export function ImportarContatosModal({
         onOpenChange(aberto);
       }}
     >
-      <DialogContent className="sm:max-w-3xl">
+      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-4xl">
         <DialogHeader>
           <div className="flex items-center gap-3">
             <span className="grid size-10 place-items-center rounded-xl bg-primary/15 text-primary">
@@ -132,8 +171,7 @@ export function ImportarContatosModal({
             <div>
               <DialogTitle>Importar contatos</DialogTitle>
               <DialogDescription>
-                Traga um CSV do Excel, Google Sheets ou outro CRM. O arquivo só é gravado depois da
-                sua confirmação.
+                Traga CSV, TSV ou Excel. Validamos tudo antes e gravamos em uma única transação.
               </DialogDescription>
             </div>
           </div>
@@ -143,11 +181,44 @@ export function ImportarContatosModal({
           ref={inputRef}
           className="hidden"
           type="file"
-          accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values"
+          accept=".csv,.tsv,.txt,.xlsx,text/csv,text/tab-separated-values,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
           onChange={(event) => void carregarArquivo(event.target.files?.[0])}
         />
 
-        {!planilha ? (
+        {resultadoFinal ? (
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-primary/30 bg-primary/[.06] p-5">
+              <div className="flex items-start gap-3">
+                <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary/15 text-primary">
+                  <CheckCircle2 className="size-5" />
+                </span>
+                <div>
+                  <h3 className="text-sm font-semibold">Importação concluída</h3>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    A operação foi confirmada por inteiro no banco. Nenhuma gravação ficou pela
+                    metade.
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <Resumo numero={resultadoFinal.importados} label="Importados" />
+              <Resumo numero={resultadoFinal.atualizados} label="Atualizados" />
+              <Resumo numero={resultadoFinal.ignorados} label="Ignorados" />
+              <Resumo numero={resultadoFinal.empresasCriadas} label="Empresas criadas" />
+            </div>
+            {relatorioFinal.some((linha) => linha.erros.length > 0 || linha.avisos.length > 0) && (
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                onClick={() => baixarRelatorio(relatorioFinal)}
+              >
+                <Download className="size-4" /> Baixar relatório da validação
+              </Button>
+            )}
+          </div>
+        ) : !planilha ? (
           <div className="space-y-3">
             <button
               type="button"
@@ -167,7 +238,7 @@ export function ImportarContatosModal({
                   Arraste o arquivo aqui ou clique para selecionar
                 </strong>
                 <span className="mt-1.5 block text-xs text-muted-foreground">
-                  CSV ou TSV, com a primeira linha contendo os títulos das colunas
+                  CSV, TSV ou XLSX · até 5 MB e 5.000 linhas
                 </span>
               </span>
             </button>
@@ -184,7 +255,8 @@ export function ImportarContatosModal({
               <div>
                 <p className="text-sm font-medium">{arquivoNome}</p>
                 <p className="text-[11px] text-muted-foreground">
-                  {planilha.linhas.length} linhas encontradas · confira as colunas antes de importar
+                  {planilha.linhas.length} linhas encontradas
+                  {planilha.aba ? ` · aba ${planilha.aba}` : ""} · confira antes de importar
                 </p>
               </div>
               <Button variant="outline" size="sm" onClick={() => inputRef.current?.click()}>
@@ -240,37 +312,123 @@ export function ImportarContatosModal({
                 Selecione as colunas de Nome e Empresa para continuar.
               </p>
             ) : (
-              <div className="overflow-hidden rounded-xl border border-border">
-                <div className="flex items-center justify-between bg-surface-2/60 px-3 py-2 text-[11px] text-muted-foreground">
-                  <span>Prévia dos dados</span>
-                  <span>
-                    {contatos.length} válidos
-                    {descartadas > 0 ? ` · ${descartadas} sem nome/empresa serão ignorados` : ""}
-                  </span>
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  <Resumo numero={linhasParaImportar.length} label="Serão processados" />
+                  <Resumo
+                    numero={invalidas.length}
+                    label="Com erro"
+                    alerta={invalidas.length > 0}
+                  />
+                  <Resumo
+                    numero={repetidasExistentes.length}
+                    label="Já cadastrados"
+                    alerta={repetidasExistentes.length > 0}
+                  />
+                  <Resumo
+                    numero={repetidasArquivo.length}
+                    label="Repetidos no arquivo"
+                    alerta={repetidasArquivo.length > 0}
+                  />
                 </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[620px] text-xs">
-                    <thead className="text-left text-[10px] uppercase tracking-wider text-muted-foreground">
-                      <tr>
-                        <th className="px-3 py-2">Nome</th>
-                        <th className="px-3 py-2">Empresa</th>
-                        <th className="px-3 py-2">Cargo</th>
-                        <th className="px-3 py-2">E-mail</th>
-                        <th className="px-3 py-2">Telefone</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {contatos.slice(0, 5).map((contato, indice) => (
-                        <tr key={`${contato.nome}-${indice}`} className="border-t border-border/60">
-                          <td className="px-3 py-2 font-medium">{contato.nome}</td>
-                          <td className="px-3 py-2">{contato.empresa}</td>
-                          <td className="px-3 py-2 text-muted-foreground">{contato.cargo}</td>
-                          <td className="px-3 py-2 text-muted-foreground">{contato.email}</td>
-                          <td className="px-3 py-2 text-muted-foreground">{contato.telefone}</td>
-                        </tr>
+
+                {repetidasExistentes.length > 0 && (
+                  <div className="rounded-xl border border-border bg-surface-2/35 p-3">
+                    <p className="text-xs font-medium">Quando o contato já existir</p>
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      {(
+                        [
+                          [
+                            "ignorar",
+                            "Ignorar existentes",
+                            "Mantém o cadastro atual sem alterações.",
+                          ],
+                          [
+                            "atualizar",
+                            "Atualizar existentes",
+                            "Atualiza nome, cargo, e-mail e telefone informados.",
+                          ],
+                        ] as const
+                      ).map(([valor, titulo, descricao]) => (
+                        <button
+                          key={valor}
+                          type="button"
+                          onClick={() => setModoDuplicados(valor)}
+                          className={`rounded-lg border px-3 py-2 text-left transition ${
+                            modoDuplicados === valor
+                              ? "border-primary/50 bg-primary/[.08]"
+                              : "border-border hover:border-primary/30"
+                          }`}
+                        >
+                          <span className="block text-xs font-medium">{titulo}</span>
+                          <span className="mt-0.5 block text-[10px] text-muted-foreground">
+                            {descricao}
+                          </span>
+                        </button>
                       ))}
-                    </tbody>
-                  </table>
+                    </div>
+                  </div>
+                )}
+
+                {(invalidas.length > 0 || repetidasArquivo.length > 0) && (
+                  <div className="flex items-start justify-between gap-3 rounded-lg border border-amber-500/30 bg-amber-500/[.07] px-3 py-2">
+                    <div className="flex gap-2 text-xs text-amber-200">
+                      <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                      <span>
+                        Linhas inválidas ou repetidas no próprio arquivo não serão gravadas.
+                      </span>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="shrink-0"
+                      onClick={() => baixarRelatorio(analise)}
+                    >
+                      Relatório
+                    </Button>
+                  </div>
+                )}
+
+                <div className="overflow-hidden rounded-xl border border-border">
+                  <div className="flex items-center justify-between bg-surface-2/60 px-3 py-2 text-[11px] text-muted-foreground">
+                    <span>Prévia e validação</span>
+                    <span>Mostrando até 8 de {analise.length}</span>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[760px] text-xs">
+                      <thead className="text-left text-[10px] uppercase tracking-wider text-muted-foreground">
+                        <tr>
+                          <th className="px-3 py-2">Linha</th>
+                          <th className="px-3 py-2">Nome</th>
+                          <th className="px-3 py-2">Empresa</th>
+                          <th className="px-3 py-2">E-mail</th>
+                          <th className="px-3 py-2">Telefone</th>
+                          <th className="px-3 py-2">Situação</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {analise.slice(0, 8).map((linha) => (
+                          <tr key={linha.numero} className="border-t border-border/60">
+                            <td className="px-3 py-2 tabular-nums text-muted-foreground">
+                              {linha.numero}
+                            </td>
+                            <td className="px-3 py-2 font-medium">{linha.contato.nome || "—"}</td>
+                            <td className="px-3 py-2">{linha.contato.empresa || "—"}</td>
+                            <td className="px-3 py-2 text-muted-foreground">
+                              {linha.contato.email}
+                            </td>
+                            <td className="px-3 py-2 text-muted-foreground">
+                              {linha.contato.telefone}
+                            </td>
+                            <td className="px-3 py-2">
+                              <SituacaoLinha linha={linha} />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
             )}
@@ -279,16 +437,16 @@ export function ImportarContatosModal({
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={importando}>
-            Cancelar
+            {resultadoFinal ? "Concluir" : "Cancelar"}
           </Button>
-          {planilha && (
+          {planilha && !resultadoFinal && (
             <Button
               onClick={importar}
-              disabled={!obrigatoriosMapeados || contatos.length === 0 || importando}
+              disabled={!obrigatoriosMapeados || linhasParaImportar.length === 0 || importando}
             >
               {importando
                 ? "Importando…"
-                : `Importar ${contatos.length} contato${contatos.length === 1 ? "" : "s"}`}
+                : `${modoDuplicados === "atualizar" ? "Importar e atualizar" : "Importar"} ${linhasParaImportar.length} contato${linhasParaImportar.length === 1 ? "" : "s"}`}
             </Button>
           )}
         </DialogFooter>
@@ -297,13 +455,57 @@ export function ImportarContatosModal({
   );
 }
 
+function Resumo({
+  numero,
+  label,
+  alerta = false,
+}: {
+  numero: number;
+  label: string;
+  alerta?: boolean;
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-surface-2/35 px-3 py-2.5">
+      <strong className={alerta && numero > 0 ? "text-amber-300" : "text-foreground"}>
+        {numero}
+      </strong>
+      <span className="ml-1.5 text-[10px] text-muted-foreground">{label}</span>
+    </div>
+  );
+}
+
+function SituacaoLinha({ linha }: { linha: LinhaContatoAnalisada }) {
+  const motivos = [...linha.erros, ...linha.avisos];
+  if (motivos.length === 0) {
+    return <span className="text-[10px] font-medium text-primary">Pronta</span>;
+  }
+  return (
+    <span
+      className={linha.erros.length > 0 ? "text-[10px] text-red-300" : "text-[10px] text-amber-300"}
+    >
+      {motivos.map(descreverMotivoLinhaContato).join(" · ")}
+    </span>
+  );
+}
+
+function baixarRelatorio(linhas: LinhaContatoAnalisada[]) {
+  baixarCsv(
+    gerarCsvRelatorioImportacao(linhas),
+    `relatorio-importacao-contatos-${new Date().toISOString().slice(0, 10)}.csv`,
+  );
+}
+
 function baixarModelo() {
   const conteudo =
     '\uFEFF"Nome";"Empresa";"Cargo";"E-mail";"Telefone"\r\n"Ana Souza";"Empresa Exemplo";"Marketing";"ana@exemplo.com";"(11) 99999-9999"';
+  baixarCsv(conteudo, "modelo-contatos-makershub.csv");
+}
+
+function baixarCsv(conteudo: string, nome: string) {
   const url = URL.createObjectURL(new Blob([conteudo], { type: "text/csv;charset=utf-8" }));
   const link = document.createElement("a");
   link.href = url;
-  link.download = "modelo-contatos-makershub.csv";
+  link.download = nome;
   link.click();
   window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
