@@ -432,6 +432,7 @@ export interface Database {
           proxima_acao: Json | null;
           observacoes: string | null;
           criado_em: string;
+          arquivado: boolean;
         };
         Insert: {
           id?: string;
@@ -453,8 +454,23 @@ export interface Database {
           proxima_acao?: Json | null;
           observacoes?: string | null;
           criado_em?: string;
+          arquivado?: boolean;
         };
         Update: Partial<Database["public"]["Tables"]["leads"]["Insert"]>;
+        Relationships: [];
+      };
+      configuracao_comercial: {
+        Row: {
+          empresa_id: string;
+          etapas_labels: Json;
+          atualizado_em: string;
+        };
+        Insert: {
+          empresa_id: string;
+          etapas_labels?: Json;
+          atualizado_em?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["configuracao_comercial"]["Insert"]>;
         Relationships: [];
       };
       timeline_lead: {
