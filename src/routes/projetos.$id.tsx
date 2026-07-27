@@ -22,7 +22,10 @@ import type { Icon as IconsaxIcon } from "iconsax-react";
 import {
   DndContext,
   DragOverlay,
+  KeyboardSensor,
   PointerSensor,
+  TouchSensor,
+  closestCorners,
   useSensor,
   useSensors,
   useDroppable,
@@ -34,12 +37,16 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import {
+  fasesParaIds,
+  faseParaId,
   PRIORIDADES,
   TIPOS_ENTREGAVEL,
   TIPO_ENTREGAVEL_ICONS,
   STATUS_ENTREGAVEL,
   getFaseInfo,
+  serializarFaseToken,
   type Tarefa,
   type Marco,
   type Entregavel,
@@ -77,6 +84,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { format, formatDistanceToNow, isSameDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -84,6 +92,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { useComercialSupa } from "@/lib/hooks/useComercial";
 import { comercial } from "@/lib/hooks/useComercial";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/projetos/$id")({ component: ProjetoDetalhe });
 
@@ -233,7 +242,11 @@ function ProjetoDetalhe() {
                 )}
                 <p className="truncate text-xs font-semibold">{p.nome}</p>
                 <div className="mt-1.5 flex items-center justify-between gap-3 text-[9px]">
-                  <span>{p.arquivado ? "Fechado" : getFaseInfo(p.fase).label}</span>
+                  <span>
+                    {p.arquivado
+                      ? "Fechado"
+                      : `${resumo.total} tarefa${resumo.total === 1 ? "" : "s"}`}
+                  </span>
                   <span className="font-medium tabular-nums">{resumo.percentual}%</span>
                 </div>
               </button>
@@ -261,6 +274,7 @@ function ProjetoDetalhe() {
       {projeto ? (
         <ProjetoConteudo
           projeto={projeto}
+          projetos={projetos}
           tarefas={tarefas}
           marcos={marcos}
           entregaveis={entregaveis}
@@ -378,11 +392,13 @@ function EmptyClientWorkspace({
 
 function ProjetoConteudo({
   projeto,
+  projetos,
   tarefas,
   marcos,
   entregaveis,
 }: {
   projeto: Projeto;
+  projetos: Projeto[];
   tarefas: Tarefa[];
   marcos: Marco[];
   entregaveis: Entregavel[];
@@ -391,6 +407,8 @@ function ProjetoConteudo({
   const podeVerValor = usuario?.role === "admin";
   const id = projeto.id;
   const [editandoProjeto, setEditandoProjeto] = useState(false);
+  const [confirmarReplicacao, setConfirmarReplicacao] = useState(false);
+  const [replicandoFluxo, setReplicandoFluxo] = useState(false);
   const [tarefaModal, setTarefaModal] = useState<{
     open: boolean;
     tarefa?: Tarefa | null;
@@ -557,10 +575,13 @@ function ProjetoConteudo({
               <div className="overflow-x-auto">
                 <KanbanTarefas
                   tarefas={minhasTarefas}
+                  todasTarefas={tarefas}
+                  projetos={projetos}
                   projetoId={projeto.id}
                   fases={projeto.fases ?? []}
                   onEditar={(t) => setTarefaModal({ open: true, tarefa: t })}
                   onNovaTarefa={(faseInicial) => setTarefaModal({ open: true, faseInicial })}
+                  onSolicitarReplicacao={() => setConfirmarReplicacao(true)}
                 />
               </div>
             </section>
@@ -652,14 +673,7 @@ function ProjetoConteudo({
         projetoId={projeto.id}
         tarefa={tarefaModal.tarefa}
         fases={projeto.fases ?? []}
-        faseInicial={
-          tarefaModal.faseInicial ??
-          (projeto.fase === "pre"
-            ? "pre_producao"
-            : projeto.fase === "concluido"
-              ? "concluida"
-              : projeto.fase)
-        }
+        faseInicial={tarefaModal.faseInicial ?? faseParaId(projeto.fases?.[0] ?? "briefing")}
       />
       <MarcoModal
         open={marcoModal.open}
@@ -673,6 +687,46 @@ function ProjetoConteudo({
         projetoId={projeto.id}
         entregavel={entregavelModal.entregavel}
       />
+      <Dialog
+        open={confirmarReplicacao}
+        onOpenChange={(open) => !replicandoFluxo && setConfirmarReplicacao(open)}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="font-display">
+              Aplicar este fluxo aos demais clientes?
+            </DialogTitle>
+            <DialogDescription>
+              Você atualizou o fluxo deste projeto. Se preferir, a mudança pode ficar somente aqui.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={replicandoFluxo}
+              onClick={() => setConfirmarReplicacao(false)}
+            >
+              Manter só neste cliente
+            </Button>
+            <Button
+              disabled={replicandoFluxo}
+              onClick={async () => {
+                setReplicandoFluxo(true);
+                const ok = await projetosActions.replicarFluxoParaTodos(projeto.id);
+                setReplicandoFluxo(false);
+                if (ok) {
+                  toast.success("Fluxo replicado para os demais projetos.");
+                  setConfirmarReplicacao(false);
+                } else {
+                  toast.error("Não foi possível replicar o fluxo no momento.");
+                }
+              }}
+            >
+              {replicandoFluxo ? "Aplicando…" : "Sim, replicar fluxo"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -854,24 +908,57 @@ const SUGESTOES_FASE = [
 
 function KanbanTarefas({
   tarefas,
+  todasTarefas,
+  projetos,
   projetoId,
   fases,
   onEditar,
   onNovaTarefa,
+  onSolicitarReplicacao,
 }: {
   tarefas: Tarefa[];
+  todasTarefas: Tarefa[];
+  projetos: Projeto[];
   projetoId: string;
   fases: string[];
   onEditar: (t: Tarefa) => void;
   onNovaTarefa: (faseInicial: string) => void;
+  onSolicitarReplicacao?: () => void;
 }) {
   const [adicionando, setAdicionando] = useState(false);
   const [novaFase, setNovaFase] = useState("");
   const [salvandoFase, setSalvandoFase] = useState(false);
   const [erroFase, setErroFase] = useState<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [faseEditando, setFaseEditando] = useState<{
+    raw: string;
+    id: string;
+    label: string;
+  } | null>(null);
+  const [faseRemovendo, setFaseRemovendo] = useState<{
+    raw: string;
+    id: string;
+    label: string;
+  } | null>(null);
+  const [removendoFase, setRemovendoFase] = useState(false);
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  const colunas = fases.map((fase) => ({
+    raw: fase,
+    id: faseParaId(fase),
+    label: getFaseInfo(fase).label,
+  }));
+  const idsSet = new Set(fasesParaIds(fases));
+
+  const tokenDuplicadoEmOutraColuna = (valor: string, faseAtual?: string) => {
+    const alvo = faseParaId(valor);
+    return Boolean(alvo) && colunas.some((coluna) => coluna.id === alvo && coluna.id !== faseAtual);
+  };
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 8 } }),
+    useSensor(KeyboardSensor),
+  );
 
   const confirmarNovaFase = async (nome: string) => {
     const n = nome.trim();
@@ -879,6 +966,10 @@ function KanbanTarefas({
     setSalvandoFase(true);
     setErroFase(null);
     try {
+      if (tokenDuplicadoEmOutraColuna(n)) {
+        setErroFase("Já existe uma etapa com esse nome nesta rotina.");
+        return;
+      }
       const sucesso = await projetosActions.adicionarFase(projetoId, n);
       if (!sucesso) {
         setErroFase("Use um nome diferente das etapas que já existem.");
@@ -886,18 +977,69 @@ function KanbanTarefas({
       }
       setNovaFase("");
       setAdicionando(false);
+      onSolicitarReplicacao?.();
     } finally {
       setSalvandoFase(false);
     }
   };
 
+  const renomearFase = async (faseId: string, label: string) => {
+    const novoLabel = label.trim();
+    const atual = colunas.find((coluna) => coluna.id === faseId)?.label.trim() ?? "";
+    if (!novoLabel || novoLabel === atual) {
+      setFaseEditando(null);
+      return true;
+    }
+    if (tokenDuplicadoEmOutraColuna(novoLabel, faseId)) {
+      toast.error("Já existe uma etapa com esse nome nesta rotina.");
+      return false;
+    }
+    const token = serializarFaseToken(faseId, novoLabel);
+    const novas = fases.map((fase) => (faseParaId(fase) === faseId ? token : fase));
+    const ok = await projetosActions.atualizarProjeto(projetoId, { fases: novas });
+    if (!ok) return false;
+    onSolicitarReplicacao?.();
+    return true;
+  };
+
+  const removerFaseSelecionada = async () => {
+    if (!faseRemovendo || removendoFase) return;
+    setRemovendoFase(true);
+    try {
+      const resultado = await projetosActions.removerFaseDeTodos(faseRemovendo.id);
+      if (resultado) {
+        toast.success(
+          `Coluna removida de ${resultado.projetos} projeto${resultado.projetos === 1 ? "" : "s"}.`,
+        );
+        setFaseRemovendo(null);
+      } else {
+        toast.error("Não foi possível remover esta coluna.");
+      }
+    } finally {
+      setRemovendoFase(false);
+    }
+  };
+
+  const tarefasNaFase = faseRemovendo
+    ? todasTarefas.filter((tarefa) => faseParaId(tarefa.status) === faseRemovendo.id)
+    : [];
+  const projetosComTarefaNaFase = new Set(tarefasNaFase.map((tarefa) => tarefa.projetoId));
+  const projetosComFase = faseRemovendo
+    ? projetos.filter(
+        (item) =>
+          (item.fases ?? []).some((fase) => faseParaId(fase) === faseRemovendo.id) ||
+          projetosComTarefaNaFase.has(item.id),
+      )
+    : [];
+  const clientesAfetados = new Set(projetosComFase.map((item) => item.cliente)).size;
+
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     setDraggingId(null);
     if (!over || active.id === over.id) return;
-    const novaFaseId = String(over.id);
-    if (fases.includes(novaFaseId)) {
-      projetosActions.atualizarTarefa(String(active.id), { status: novaFaseId });
+    const novaFaseId = faseParaId(String(over.id));
+    if (idsSet.has(novaFaseId)) {
+      void projetosActions.atualizarTarefa(String(active.id), { status: novaFaseId });
     }
   };
 
@@ -906,30 +1048,31 @@ function KanbanTarefas({
   return (
     <DndContext
       sensors={sensors}
+      collisionDetection={closestCorners}
       onDragStart={(e) => setDraggingId(String(e.active.id))}
+      onDragCancel={() => setDraggingId(null)}
       onDragEnd={handleDragEnd}
     >
       <div className="flex gap-3 overflow-x-auto pb-4">
-        {fases.map((faseId, idx) => {
-          const info = getFaseInfo(faseId);
-          const items = tarefas.filter((t) => t.status === faseId);
-          const isConcluida = faseId === "concluida";
+        {colunas.map((coluna, idx) => {
+          const items = tarefas.filter((tarefa) => faseParaId(tarefa.status) === coluna.id);
+          const isConcluida = coluna.id === "concluida";
           return (
             <KanbanColuna
-              key={faseId}
-              faseId={faseId}
-              label={info.label}
+              key={coluna.raw}
+              faseId={coluna.raw}
+              label={coluna.label}
+              onStartEditarNome={() => setFaseEditando({ ...coluna })}
               isConcluida={isConcluida}
-              podeEsquerda={idx > 0 && !isConcluida}
-              podeDireita={idx < fases.length - 1 && !isConcluida && fases[idx + 1] !== "concluida"}
-              onMover={(dir) => projetosActions.moverFase(projetoId, faseId, dir)}
-              onRemover={
-                items.length === 0 && !isConcluida
-                  ? () => projetosActions.removerFase(projetoId, faseId)
-                  : undefined
-              }
+              podeEsquerda={idx > 0}
+              podeDireita={idx < fases.length - 1}
+              onMover={async (dir) => {
+                const ok = await projetosActions.moverFase(projetoId, coluna.id, dir);
+                if (ok) onSolicitarReplicacao?.();
+              }}
+              onRemover={!isConcluida ? () => setFaseRemovendo({ ...coluna }) : undefined}
               count={items.length}
-              onNovaTarefa={() => onNovaTarefa(faseId)}
+              onNovaTarefa={() => onNovaTarefa(coluna.id)}
             >
               {items.map((t) => (
                 <TarefaCard
@@ -958,7 +1101,7 @@ function KanbanTarefas({
                 Nova fase
               </p>
               <div className="flex flex-wrap gap-1">
-                {SUGESTOES_FASE.filter((s) => !fases.includes(s.toLowerCase().replace(/\s+/g, "_")))
+                {SUGESTOES_FASE.filter((s) => !idsSet.has(faseParaId(s)))
                   .slice(0, 6)
                   .map((s) => (
                     <button
@@ -1009,6 +1152,100 @@ function KanbanTarefas({
         </div>
       </div>
 
+      <Dialog open={Boolean(faseEditando)} onOpenChange={(open) => !open && setFaseEditando(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="font-display">Editar nome da etapa</DialogTitle>
+            <DialogDescription>
+              Escolha um nome mais claro para esta coluna do fluxo deste projeto.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1.5">
+            <Label htmlFor="fluxo-fase-nome" className="text-[11px] text-muted-foreground">
+              Nome da etapa
+            </Label>
+            <Input
+              id="fluxo-fase-nome"
+              autoFocus
+              value={faseEditando?.label ?? ""}
+              maxLength={60}
+              onChange={(event) =>
+                setFaseEditando((atual) =>
+                  atual ? { ...atual, label: event.target.value } : atual,
+                )
+              }
+              onKeyDown={async (event) => {
+                if (event.key === "Enter" && faseEditando) {
+                  event.preventDefault();
+                  if (await renomearFase(faseEditando.id, faseEditando.label)) {
+                    setFaseEditando(null);
+                  }
+                }
+                if (event.key === "Escape") setFaseEditando(null);
+              }}
+              placeholder="Ex.: Aprovação interna"
+              className="h-11"
+            />
+            <p className="text-[10px] text-muted-foreground">
+              A alteração vale somente para este cliente, a menos que você escolha replicar depois.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setFaseEditando(null)}>
+              Cancelar
+            </Button>
+            <Button
+              disabled={!faseEditando?.label.trim()}
+              onClick={async () => {
+                if (faseEditando && (await renomearFase(faseEditando.id, faseEditando.label))) {
+                  setFaseEditando(null);
+                }
+              }}
+            >
+              Salvar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(faseRemovendo)}
+        onOpenChange={(open) => !open && !removendoFase && setFaseRemovendo(null)}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="font-display">Excluir coluna de todos os fluxos?</DialogTitle>
+            <DialogDescription>
+              Se esta coluna existir em outros clientes, ela também será apagada.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+              Coluna: <strong>{faseRemovendo?.label}</strong>
+            </p>
+            <p className="text-xs leading-5 text-muted-foreground">
+              A exclusão afetará {projetosComFase.length} projeto
+              {projetosComFase.length === 1 ? "" : "s"} em {clientesAfetados} cliente
+              {clientesAfetados === 1 ? "" : "s"}.
+              {tarefasNaFase.length > 0 &&
+                ` As ${tarefasNaFase.length} tarefas desta etapa serão movidas para uma etapa vizinha, sem perda de conteúdo.`}
+            </p>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setFaseRemovendo(null)}
+              disabled={removendoFase}
+            >
+              Cancelar
+            </Button>
+            <Button variant="destructive" onClick={removerFaseSelecionada} disabled={removendoFase}>
+              {removendoFase ? "Excluindo…" : "Excluir em todos"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <DragOverlay>
         {draggingTarefa && (
           <TarefaCard tarefa={draggingTarefa} onEditar={() => {}} isDragging overlay />
@@ -1021,6 +1258,7 @@ function KanbanTarefas({
 function KanbanColuna({
   faseId,
   label,
+  onStartEditarNome,
   isConcluida,
   podeEsquerda,
   podeDireita,
@@ -1032,6 +1270,7 @@ function KanbanColuna({
 }: {
   faseId: string;
   label: string;
+  onStartEditarNome: () => void;
   isConcluida: boolean;
   podeEsquerda: boolean;
   podeDireita: boolean;
@@ -1070,14 +1309,17 @@ function KanbanColuna({
         >
           <ArrowLeft2 size={12} color="currentColor" variant="Linear" />
         </button>
-        <h3
+        <button
+          type="button"
+          onClick={onStartEditarNome}
           className={cn(
-            "flex-1 truncate text-xs font-semibold uppercase tracking-[.12em]",
+            "min-w-0 flex-1 truncate rounded px-1 text-left text-xs font-semibold uppercase tracking-[.12em] transition hover:bg-surface-2 hover:text-foreground",
             isConcluida ? "text-muted-foreground/60" : "text-muted-foreground",
           )}
+          title="Editar nome da etapa"
         >
           {label}
-        </h3>
+        </button>
         {count > 0 && (
           <span className="grid size-6 place-items-center rounded-full bg-surface-2 text-[10px] font-medium tabular-nums text-muted-foreground">
             {count}

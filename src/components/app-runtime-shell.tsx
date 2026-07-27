@@ -90,7 +90,7 @@ function AppShell({ sessionHint }: { sessionHint: boolean }) {
 
   const sidebarStyle = {
     "--sidebar-width": "15rem",
-    "--sidebar-width-icon": "4rem",
+    "--sidebar-width-icon": "4.5rem",
     "--sidebar": "var(--background)",
     "--sidebar-accent": "color-mix(in srgb, var(--foreground) 7%, var(--background))",
     "--sidebar-border": "color-mix(in srgb, var(--foreground) 7%, transparent)",
@@ -120,9 +120,13 @@ function AppShell({ sessionHint }: { sessionHint: boolean }) {
     // navegação administrativa disputando atenção com a operação ao vivo.
     if (pathname.startsWith("/evento-live/")) return <Outlet />;
 
-    const role = (usuario as any).role ?? "admin";
+    const usuarioAutorizado = usuario as {
+      role?: string;
+      permissoes?: Partial<Permissoes> | null;
+    };
+    const role = usuarioAutorizado.role ?? "admin";
     if (role !== "admin") {
-      const permissoes = (usuario as any).permissoes as Partial<Permissoes> | null;
+      const permissoes = usuarioAutorizado.permissoes ?? null;
       for (const [modulo, rota] of Object.entries(MODULO_ROTA)) {
         if (pathname.startsWith(rota) && !temAcesso(permissoes, modulo as keyof Permissoes)) {
           return <Navigate to="/" replace />;

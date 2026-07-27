@@ -56,6 +56,7 @@ import {
   type PortalProject,
 } from "@/lib/portal-cliente";
 import { portalSupabase } from "@/lib/portal-supabase";
+import { getReviewEmbedUrl } from "@/lib/client-reviews";
 import { cn } from "@/lib/utils";
 import {
   isValidClientAdjustmentTimecode,
@@ -1307,19 +1308,20 @@ function ApprovalCard({
   const [thumbnailFailed, setThumbnailFailed] = useState(false);
   const thumbnail = driveThumbnailUrl(item.drive_file_id);
   const poster = thumbnailFailed ? cover : thumbnail || cover;
+  const embedUrl = item.embed_url || (item.url ? getReviewEmbedUrl(item.url) : null);
 
   useEffect(() => {
     setPreviewReady(false);
     setPreviewSlow(false);
     setPreviewRequested(priority);
     setThumbnailFailed(false);
-  }, [item.drive_file_id, item.embed_url, priority]);
+  }, [item.drive_file_id, embedUrl, priority]);
 
   useEffect(() => {
-    if (!item.embed_url || !previewRequested || previewReady) return;
+    if (!embedUrl || !previewRequested || previewReady) return;
     const timeout = window.setTimeout(() => setPreviewSlow(true), 8_000);
     return () => window.clearTimeout(timeout);
-  }, [item.embed_url, previewReady, previewRequested]);
+  }, [embedUrl, previewReady, previewRequested]);
 
   const requestChanges = async () => {
     const validPoints = adjustmentPoints.filter((point) => point.change.trim());
@@ -1387,21 +1389,21 @@ function ApprovalCard({
         ) : (
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(144,248,38,.06),transparent_55%),#0c0e0c]" />
         )}
-        {item.embed_url && previewRequested ? (
+        {embedUrl && previewRequested ? (
           <iframe
-            src={item.embed_url}
+            src={embedUrl}
             title={`${item.title} ${item.version_label || ""}`}
             className={cn(
               "absolute inset-0 size-full transition-opacity duration-300",
               previewReady ? "opacity-100" : "opacity-0",
             )}
-            allow="autoplay; fullscreen; picture-in-picture"
+            allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
             allowFullScreen
             loading={priority ? "eager" : "lazy"}
             onLoad={() => setPreviewReady(true)}
           />
         ) : null}
-        {item.embed_url && previewRequested && !previewReady && (
+        {embedUrl && previewRequested && !previewReady && (
           <div
             className="absolute inset-0 grid place-items-center bg-black/60 backdrop-blur-[2px]"
             role="status"
@@ -1432,10 +1434,10 @@ function ApprovalCard({
             </div>
           </div>
         )}
-        {(!item.embed_url || !previewRequested) && (
+        {(!embedUrl || !previewRequested) && (
           <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-black/35" />
         )}
-        {item.embed_url && !previewRequested && (
+        {embedUrl && !previewRequested && (
           <button
             type="button"
             onClick={() => setPreviewRequested(true)}
@@ -1464,7 +1466,7 @@ function ApprovalCard({
             {item.version_label || item.type}
           </span>
         </div>
-        {!item.embed_url && item.url && (
+        {!embedUrl && item.url && (
           <a
             href={item.url}
             target="_blank"
