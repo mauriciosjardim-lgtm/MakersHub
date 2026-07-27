@@ -1,15 +1,33 @@
 import { useDraggable } from "@dnd-kit/core";
-import { Flame, Snowflake, Thermometer } from "lucide-react";
-import { Danger, Calendar, Buildings2, DollarCircle, Profile, CloseCircle } from "iconsax-react";
+import { Archive, ArchiveRestore, Flame, Snowflake, Thermometer } from "lucide-react";
+import { Danger, Calendar, Buildings2, DollarCircle, Profile } from "iconsax-react";
 import { formatDistanceToNow, isPast, isToday, format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { type Lead, getEmpresa, getContato, fmtBRL } from "@/lib/hooks/useComercial";
 import { cn } from "@/lib/utils";
 
 const TEMPS = {
-  frio:   { icon: Snowflake,   label: "Frio",   color: "var(--info)",        text: "text-info",        glow: "shadow-[0_0_10px_var(--info)]" },
-  morno:  { icon: Thermometer, label: "Morno",  color: "var(--warning)",     text: "text-warning",     glow: "shadow-[0_0_10px_var(--warning)]" },
-  quente: { icon: Flame,       label: "Quente", color: "var(--destructive)", text: "text-destructive", glow: "shadow-[0_0_12px_var(--destructive)]" },
+  frio: {
+    icon: Snowflake,
+    label: "Frio",
+    color: "var(--info)",
+    text: "text-info",
+    glow: "shadow-[0_0_10px_var(--info)]",
+  },
+  morno: {
+    icon: Thermometer,
+    label: "Morno",
+    color: "var(--warning)",
+    text: "text-warning",
+    glow: "shadow-[0_0_10px_var(--warning)]",
+  },
+  quente: {
+    icon: Flame,
+    label: "Quente",
+    color: "var(--destructive)",
+    text: "text-destructive",
+    glow: "shadow-[0_0_12px_var(--destructive)]",
+  },
 } as const;
 
 function quando(iso: string) {
@@ -18,7 +36,17 @@ function quando(iso: string) {
   return formatDistanceToNow(d, { locale: ptBR, addSuffix: true });
 }
 
-export function LeadCard({ lead, onOpen, onRemove }: { lead: Lead; onOpen: (id: string) => void; onRemove?: (id: string) => void }) {
+export function LeadCard({
+  lead,
+  onOpen,
+  onArchive,
+  dragDisabled = false,
+}: {
+  lead: Lead;
+  onOpen: (id: string) => void;
+  onArchive?: (id: string, arquivado: boolean) => void;
+  dragDisabled?: boolean;
+}) {
   const empresa = getEmpresa(lead.empresaId);
   const contato = getContato(lead.contatoId);
   const temp = TEMPS[lead.temperatura];
@@ -27,6 +55,7 @@ export function LeadCard({ lead, onOpen, onRemove }: { lead: Lead; onOpen: (id: 
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: lead.id,
     data: { etapa: lead.etapa },
+    disabled: dragDisabled,
   });
 
   const atrasada = lead.proximaAcao && isPast(new Date(lead.proximaAcao.data));
@@ -45,20 +74,30 @@ export function LeadCard({ lead, onOpen, onRemove }: { lead: Lead; onOpen: (id: 
       }}
       role="button"
       tabIndex={0}
-      onKeyDown={e => { if (e.key === "Enter" && !isDragging) onOpen(lead.id); }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" && !isDragging) onOpen(lead.id);
+      }}
       className={cn(
         "group/card relative w-full select-none text-left rounded-2xl border border-border bg-card p-4 shadow-sm transition-all cursor-pointer",
         "hover:border-primary/40 hover:shadow-[0_10px_30px_-14px_oklch(0_0_0/0.7)] hover:-translate-y-0.5",
         isDragging && "opacity-30 pointer-events-none",
       )}
     >
-      {onRemove && (
+      {onArchive && (
         <button
-          onClick={e => { e.stopPropagation(); onRemove(lead.id); }}
-          className="absolute left-2 top-2 z-10 inline-flex size-5 items-center justify-center rounded-full bg-surface-2 text-muted-foreground/40 opacity-0 transition-opacity group-hover/card:opacity-100 hover:bg-destructive/80 hover:text-white"
-          title="Remover lead"
+          onClick={(event) => {
+            event.stopPropagation();
+            onArchive(lead.id, !lead.arquivado);
+          }}
+          className="absolute right-7 top-1.5 z-10 inline-flex size-7 items-center justify-center rounded-lg border border-border/70 bg-background/95 text-muted-foreground opacity-70 shadow-sm transition sm:opacity-0 sm:group-hover/card:opacity-100 hover:border-primary/40 hover:bg-primary/10 hover:text-primary focus-visible:opacity-100"
+          title={lead.arquivado ? "Restaurar oportunidade" : "Arquivar oportunidade"}
+          aria-label={lead.arquivado ? "Restaurar oportunidade" : "Arquivar oportunidade"}
         >
-          <CloseCircle size={12} color="currentColor" variant="Linear" />
+          {lead.arquivado ? (
+            <ArchiveRestore className="size-3.5" />
+          ) : (
+            <Archive className="size-3.5" />
+          )}
         </button>
       )}
 
@@ -66,36 +105,63 @@ export function LeadCard({ lead, onOpen, onRemove }: { lead: Lead; onOpen: (id: 
       <span
         title={`Temperatura: ${temp.label}`}
         className={cn("absolute right-3 top-3 size-2 rounded-full", temp.glow)}
-        style={{ background: `var(--${lead.temperatura === "frio" ? "info" : lead.temperatura === "morno" ? "warning" : "destructive"})` }}
+        style={{
+          background: `var(--${lead.temperatura === "frio" ? "info" : lead.temperatura === "morno" ? "warning" : "destructive"})`,
+        }}
       />
 
       {/* Empresa */}
-      <p className="flex items-center gap-1.5 pr-5 text-[14px] font-semibold leading-tight text-foreground">
-        <Buildings2 size={14} color="currentColor" variant="Linear" className="shrink-0 text-primary" /> {empresa?.nome}
+      <p className="flex items-center gap-1.5 pr-14 text-[14px] font-semibold leading-tight text-foreground">
+        <Buildings2
+          size={14}
+          color="currentColor"
+          variant="Linear"
+          className="shrink-0 text-primary"
+        />{" "}
+        {empresa?.nome}
       </p>
 
       {/* Contato */}
       <p className="mt-1.5 flex items-center gap-1.5 text-[12px] text-muted-foreground">
-        <Profile size={14} color="currentColor" variant="Linear" className="shrink-0 text-primary" /> {contato?.nome}
+        <Profile
+          size={14}
+          color="currentColor"
+          variant="Linear"
+          className="shrink-0 text-primary"
+        />{" "}
+        {contato?.nome}
       </p>
 
       {/* Valor */}
       <div className="mt-3 flex items-center justify-between">
         <p className="font-display text-lg font-semibold tracking-tight text-foreground">
-          <DollarCircle size={16} color="currentColor" variant="Linear" className="mr-1 inline align-[-2px] text-primary" /> {fmtBRL(lead.valor)}
+          <DollarCircle
+            size={16}
+            color="currentColor"
+            variant="Linear"
+            className="mr-1 inline align-[-2px] text-primary"
+          />{" "}
+          {fmtBRL(lead.valor)}
         </p>
-        <span className={cn("inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium", temp.text)}>
+        <span
+          className={cn(
+            "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium",
+            temp.text,
+          )}
+        >
           <TempIcon className="size-3" /> {temp.label}
         </span>
       </div>
 
       {/* Próxima ação — bloco destacado */}
-      <div className={cn(
-        "mt-3 rounded-lg border px-2.5 py-2",
-        semAcao && "border-destructive/30 bg-destructive/5",
-        !semAcao && atrasada && "border-destructive/30 bg-destructive/5",
-        !semAcao && !atrasada && "border-border/60 bg-surface-1/60",
-      )}>
+      <div
+        className={cn(
+          "mt-3 rounded-lg border px-2.5 py-2",
+          semAcao && "border-destructive/30 bg-destructive/5",
+          !semAcao && atrasada && "border-destructive/30 bg-destructive/5",
+          !semAcao && !atrasada && "border-border/60 bg-surface-1/60",
+        )}
+      >
         {semAcao ? (
           <div className="flex items-center gap-1.5 text-[11px] text-destructive">
             <Danger size={12} color="currentColor" variant="Linear" /> Sem próxima ação
@@ -103,13 +169,20 @@ export function LeadCard({ lead, onOpen, onRemove }: { lead: Lead; onOpen: (id: 
         ) : (
           <>
             <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-              <Calendar size={12} color="currentColor" variant="Linear" className="text-primary" /> Próxima ação
+              <Calendar size={12} color="currentColor" variant="Linear" className="text-primary" />{" "}
+              Próxima ação
             </div>
             <p className="mt-0.5 truncate text-[12px] font-medium text-foreground">
               {lead.proximaAcao!.titulo}
             </p>
-            <p className={cn("mt-0.5 text-[10px] tabular-nums", atrasada ? "text-destructive font-medium" : "text-muted-foreground")}>
-              {atrasada ? "Atrasada · " : ""}{quando(lead.proximaAcao!.data)}
+            <p
+              className={cn(
+                "mt-0.5 text-[10px] tabular-nums",
+                atrasada ? "text-destructive font-medium" : "text-muted-foreground",
+              )}
+            >
+              {atrasada ? "Atrasada · " : ""}
+              {quando(lead.proximaAcao!.data)}
             </p>
           </>
         )}

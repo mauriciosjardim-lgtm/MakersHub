@@ -43,7 +43,7 @@ import {
   getTimelineDoLead,
   getTarefasDoLead,
   fmtBRL,
-  ETAPAS,
+  useEtapasComercial,
   leadScore,
   type Lead,
   type Temperatura,
@@ -56,7 +56,12 @@ import { EtapaIcon } from "./etapa-icon";
 import { cn } from "@/lib/utils";
 
 export function LeadDrawer({ leadId, onClose }: { leadId: string | null; onClose: () => void }) {
-  const lead = useComercial((s) => s.leads.find((l) => l.id === leadId) ?? null);
+  const lead = useComercial(
+    (s) =>
+      s.leads.find((l) => l.id === leadId) ??
+      s.leadsArquivados.find((l) => l.id === leadId) ??
+      null,
+  );
   const open = !!leadId && !!lead;
   return (
     <Sheet open={open} onOpenChange={(v) => !v && onClose()}>
@@ -80,6 +85,7 @@ const PROGRESSO: EtapaJornada[] = [
 ];
 
 function DrawerBody({ lead, onClose: _onClose }: { lead: Lead; onClose: () => void }) {
+  const etapas = useEtapasComercial();
   const empresa = getEmpresa(lead.empresaId);
   const contato = getContato(lead.contatoId);
   const outrosContatos = empresa
@@ -88,7 +94,7 @@ function DrawerBody({ lead, onClose: _onClose }: { lead: Lead; onClose: () => vo
   useComercial((s) => s.timeline.length + s.tarefas.length);
   const timeline = getTimelineDoLead(lead.id);
   const tarefas = getTarefasDoLead(lead.id);
-  const etapaMeta = ETAPAS.find((e) => e.id === lead.etapa)!;
+  const etapaMeta = etapas.find((e) => e.id === lead.etapa)!;
   const { score, estrelas, rotulo } = leadScore(lead);
 
   const [fechando, setFechando] = useState(false);
@@ -276,7 +282,7 @@ function DrawerBody({ lead, onClose: _onClose }: { lead: Lead; onClose: () => vo
                 label="Cidade"
                 defaultValue={empresa?.cidade ?? ""}
                 onSave={(v) => {
-                  empresa && comercial.updateEmpresa(empresa.id, { cidade: v });
+                  if (empresa) void comercial.updateEmpresa(empresa.id, { cidade: v });
                   toast.success("Cidade atualizada.");
                 }}
               />
@@ -284,7 +290,7 @@ function DrawerBody({ lead, onClose: _onClose }: { lead: Lead; onClose: () => vo
                 label="Segmento"
                 defaultValue={empresa?.segmento ?? ""}
                 onSave={(v) => {
-                  empresa && comercial.updateEmpresa(empresa.id, { segmento: v });
+                  if (empresa) void comercial.updateEmpresa(empresa.id, { segmento: v });
                   toast.success("Segmento atualizado.");
                 }}
               />
@@ -292,14 +298,14 @@ function DrawerBody({ lead, onClose: _onClose }: { lead: Lead; onClose: () => vo
                 label="Site"
                 defaultValue={empresa?.site ?? ""}
                 onSave={(v) => {
-                  empresa && comercial.updateEmpresa(empresa.id, { site: v });
+                  if (empresa) void comercial.updateEmpresa(empresa.id, { site: v });
                 }}
               />
               <CampoEdit
                 label="Instagram"
                 defaultValue={empresa?.instagram ?? ""}
                 onSave={(v) => {
-                  empresa && comercial.updateEmpresa(empresa.id, { instagram: v });
+                  if (empresa) void comercial.updateEmpresa(empresa.id, { instagram: v });
                 }}
               />
             </div>
@@ -739,13 +745,14 @@ function ScoreBox({
 }
 
 function ProgressoEtapas({ atual }: { atual: EtapaJornada }) {
+  const etapas = useEtapasComercial();
   const idxAtual = PROGRESSO.indexOf(atual);
   const perdido = atual === "perdido";
   return (
     <div className="mt-3">
       <div className="flex items-center justify-between gap-1">
         {PROGRESSO.map((etapa, i) => {
-          const meta = ETAPAS.find((e) => e.id === etapa)!;
+          const meta = etapas.find((e) => e.id === etapa)!;
           const ativo = !perdido && i <= idxAtual;
           const atualEsse = !perdido && i === idxAtual;
           return (
