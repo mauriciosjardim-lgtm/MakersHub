@@ -25,6 +25,13 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import {
   Dialog,
   DialogContent,
   DialogFooter,
@@ -33,21 +40,28 @@ import {
 } from "@/components/ui/dialog";
 import { ClienteModal } from "@/components/projetos/cliente-modal";
 import { CentralAtencao } from "@/components/projetos/central-atencao";
-import { NovidadesProjetosV7 } from "@/components/projetos/novidades-projetos-v7";
+import { NovidadesFluxoProjetos } from "@/components/projetos/novidades-fluxo-projetos";
 import {
   ProjetosErrorState,
   ProjetosLoadingState,
 } from "@/components/projetos/projetos-error-state";
 import {
-  FASES_PADRAO,
+  faseParaId,
   getFaseInfo,
-  type FaseProjeto,
+  isProjetoAtivo,
+  normalizarChaveFase,
   type Projeto,
   type Tarefa,
 } from "@/lib/mock/projetos";
 import { useProjetos } from "@/lib/hooks/useProjetos";
 import { comercial, useComercialSupa, type Empresa } from "@/lib/hooks/useComercial";
 import { calcularResumoProgresso, SAUDE_ESTILO } from "@/lib/projetos/progresso";
+import {
+  chaveAtualPipeline,
+  colunasPipeline,
+  statusAtualPipeline,
+  tokenFaseNoFluxo,
+} from "@/lib/projetos/pipeline";
 import {
   findProjectClient,
   normalizeClientName,
@@ -88,6 +102,11 @@ function iniciais(nome: string) {
 
 const normalizarNome = normalizeClientName;
 const mesmoMembro = (a: string, b: string) => normalizarNome(a) === normalizarNome(b);
+const resolverNomeFaseNoFluxo = (fases: string[] | undefined, fase: string) => {
+  const id = faseParaId(fase);
+  const token = fases?.find((item) => faseParaId(item) === id);
+  return getFaseInfo(token ?? fase).label;
+};
 
 function ProjetosPage() {
   const { projetos, tarefas, marcos, entregaveis, loading, error, retry } = useProjetos();
@@ -209,9 +228,7 @@ function ProjetosPage() {
     [tarefas, responsavel],
   );
 
-  const ativos = projetosOperacionais.filter(
-    (p) => !p.arquivado && !["concluido", "pausado"].includes(p.fase),
-  );
+  const ativos = projetosOperacionais.filter(isProjetoAtivo);
   const fechados = projetos.filter((p) => p.arquivado);
   const projetosOperacionaisIds = new Set(projetosOperacionais.map((project) => project.id));
   const atrasadas = tarefas.filter(
@@ -221,7 +238,13 @@ function ProjetosPage() {
       t.prazo &&
       new Date(t.prazo) < new Date(),
   ).length;
-  const emAprovacao = projetosOperacionais.filter((p) => p.fase === "revisao").length;
+  const emAprovacao = projetosOperacionais.filter((projeto) =>
+    tarefas.some((tarefa) => {
+      if (tarefa.projetoId !== projeto.id || tarefa.concluida) return false;
+      const nome = normalizarChaveFase(resolverNomeFaseNoFluxo(projeto.fases, tarefa.status));
+      return nome.includes("revis") || nome.includes("aprov");
+    }),
+  ).length;
   const semanaInicio = addWeeks(startOfWeek(new Date(), { weekStartsOn: 1 }), semanaOffset);
   const semanaFim = addDays(semanaInicio, 4);
 
@@ -275,7 +298,7 @@ function ProjetosPage() {
 
   return (
     <div className="space-y-3 px-4 py-4 md:px-8 md:py-5">
-      <NovidadesProjetosV7 projetos={projetos} />
+      <NovidadesFluxoProjetos projetos={projetos} />
       <section className="flex min-w-0 flex-wrap items-stretch overflow-hidden rounded-2xl border border-border/70 bg-surface-1/30 shadow-[0_18px_50px_-38px_rgba(0,0,0,.9)]">
         <div className="min-w-0 flex-1 overflow-x-auto">
           <div className="grid min-w-[620px] grid-cols-4">
@@ -308,12 +331,7 @@ function ProjetosPage() {
         </div>
       </section>
 
-      <div
-        className={cn(
-          "grid grid-cols-1 gap-5",
-          centralAberta && "2xl:grid-cols-[minmax(0,1fr)_280px]",
-        )}
-      >
+      <div className="grid grid-cols-1 gap-5">
         <div className="flex min-w-0 flex-col gap-4">
           <section className="order-1">
             <div className="mb-3 flex items-end justify-between gap-3">
@@ -367,7 +385,7 @@ function ProjetosPage() {
                   (t) => ps.some((p) => p.id === t.projetoId) && !t.concluida,
                 ).length;
                 const cor = coresClientes.get(normalizarNome(nome)) ?? corCliente(nome);
-                const destino = ps.find((p) => !["concluido", "pausado"].includes(p.fase)) ?? ps[0];
+                const destino = ps.find(isProjetoAtivo) ?? ps[0];
                 const abrirCliente = () => {
                   const workspaceId = clientRecord?.id ?? destino?.id;
                   if (workspaceId) navigate({ to: "/projetos/$id", params: { id: workspaceId } });
@@ -597,16 +615,30 @@ function ProjetosPage() {
             )}
           </section>
         </div>
-
-        {centralAberta && (
+      </div>
+      <Sheet open={centralAberta} onOpenChange={setCentralAberta}>
+        <SheetContent
+          side="right"
+          className="z-[80] !w-[min(400px,calc(100vw-1rem))] !max-w-[400px] border-border/70 bg-background/95 p-0 shadow-2xl backdrop-blur-xl"
+        >
+          <SheetHeader className="sr-only">
+            <SheetTitle>Central de atenção</SheetTitle>
+            <SheetDescription>
+              Pendências que exigem decisão ou acompanhamento nos projetos.
+            </SheetDescription>
+          </SheetHeader>
           <CentralAtencao
             projetos={projetos}
             tarefas={tarefas}
             entregaveis={entregaveis}
-            onAbrir={(id) => navigate({ to: "/projetos/$id", params: { id } })}
+            modo="painel"
+            onAbrir={(id) => {
+              setCentralAberta(false);
+              navigate({ to: "/projetos/$id", params: { id } });
+            }}
           />
-        )}
-      </div>
+        </SheetContent>
+      </Sheet>
       <ClienteModal
         open={clientModal}
         onClose={() => setClientModal(false)}
@@ -774,27 +806,6 @@ function ProjetoCard({
   );
 }
 
-const FASE_PROJETO_POR_COLUNA: Partial<Record<string, FaseProjeto>> = {
-  briefing: "briefing",
-  pre_producao: "pre",
-  captacao: "captacao",
-  edicao: "edicao",
-  revisao: "revisao",
-  entrega: "entrega",
-  concluida: "concluido",
-};
-
-function colunasPipeline(projetos: Projeto[]) {
-  const personalizadas: string[] = [];
-  const conhecidas = new Set(FASES_PADRAO);
-  projetos.forEach((p) =>
-    (p.fases ?? FASES_PADRAO).forEach((fase) => {
-      if (!conhecidas.has(fase) && !personalizadas.includes(fase)) personalizadas.push(fase);
-    }),
-  );
-  return [...FASES_PADRAO.slice(0, -1), ...personalizadas, FASES_PADRAO.at(-1)!];
-}
-
 function Pipeline({
   projetos,
   tarefas,
@@ -806,16 +817,15 @@ function Pipeline({
   coresClientes: ReadonlyMap<string, string>;
   onAbrir: (id: string) => void;
 }) {
-  const colunas = colunasPipeline(projetos);
+  const colunas = colunasPipeline(projetos, tarefas);
   return (
     <div className="flex min-h-[430px] gap-3 overflow-x-auto p-3">
-      {colunas.map((fase, index) => {
-        const faseProjeto = FASE_PROJETO_POR_COLUNA[fase];
-        const ps = faseProjeto
-          ? projetos.filter((p) => p.fase === faseProjeto)
-          : projetos.filter((p) => tarefas.some((t) => t.projetoId === p.id && t.status === fase));
+      {colunas.map((coluna, index) => {
+        const ps = projetos.filter(
+          (projeto) => chaveAtualPipeline(projeto, tarefas) === coluna.key,
+        );
         return (
-          <div key={fase} className="relative w-[280px] shrink-0 p-1.5">
+          <div key={coluna.key} className="relative w-[280px] shrink-0 p-1.5">
             {index < colunas.length - 1 && (
               <span
                 aria-hidden="true"
@@ -823,9 +833,17 @@ function Pipeline({
               />
             )}
             <div className="mb-3 flex h-11 items-center justify-between rounded-xl border border-border/70 bg-surface-1/65 px-3 shadow-sm">
-              <h3 className="truncate text-[11px] font-semibold uppercase tracking-[.12em] text-muted-foreground">
-                {getFaseInfo(fase).label}
-              </h3>
+              <div className="flex min-w-0 items-center gap-2 pr-2">
+                {coluna.personalizada && (
+                  <span
+                    className="size-1.5 shrink-0 rounded-full bg-primary shadow-[0_0_7px_var(--primary)]"
+                    title="Etapa personalizada"
+                  />
+                )}
+                <h3 className="min-w-0 truncate text-[11px] font-semibold uppercase tracking-[.12em] text-muted-foreground">
+                  {getFaseInfo(coluna.token).label}
+                </h3>
+              </div>
               <span className="grid size-6 shrink-0 place-items-center rounded-full bg-surface-2 text-[9px] font-semibold tabular-nums text-muted-foreground">
                 {ps.length}
               </span>
@@ -977,7 +995,7 @@ function Semana({
                             className="rounded-full px-2 py-1 text-[8px] font-medium"
                             style={{ color: cor, backgroundColor: `${cor}14` }}
                           >
-                            {getFaseInfo(t.status).label}
+                            {resolverNomeFaseNoFluxo(p.fases, t.status)}
                           </span>
                         </div>
                         <div className="mt-3 flex items-center gap-2 border-t border-border/45 pt-3 text-[9px] text-muted-foreground">
@@ -1029,6 +1047,8 @@ function Lista({
     <div className="divide-y divide-border/60">
       {projetos.map((p) => {
         const r = calcularResumoProgresso(p, tarefas);
+        const statusAtual = statusAtualPipeline(p, tarefas);
+        const faseAtual = statusAtual ? getFaseInfo(tokenFaseNoFluxo(p, statusAtual)).label : null;
         return (
           <button
             key={p.id}
@@ -1040,9 +1060,17 @@ function Lista({
           >
             <div className="min-w-0">
               <p className="truncate text-sm font-medium">{p.nome}</p>
-              <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                {p.cliente} · {p.arquivado ? "Fechado" : getFaseInfo(p.fase).label}
-              </p>
+              <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                <span className="truncate">
+                  {p.cliente} ·{" "}
+                  {p.arquivado ? "Fechado" : `${r.total} tarefa${r.total === 1 ? "" : "s"}`}
+                </span>
+                {!p.arquivado && faseAtual && (
+                  <span className="max-w-full truncate rounded-full border border-primary/20 bg-primary/[0.08] px-2 py-0.5 text-[9px] font-medium text-primary">
+                    {faseAtual}
+                  </span>
+                )}
+              </div>
             </div>
             <div className="flex items-center gap-4 text-xs text-muted-foreground">
               <span className="hidden items-center gap-1.5 sm:inline-flex">

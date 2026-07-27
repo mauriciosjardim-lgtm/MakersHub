@@ -1,7 +1,7 @@
 // Fonte ÚNICA de cálculo de progresso e saúde de projeto.
 // A UI (listagem e tela interna) deve consumir daqui — nunca duplicar as regras.
 import type { Projeto, Tarefa } from "@/lib/mock/projetos";
-import { FASES_PADRAO } from "@/lib/mock/projetos";
+import { FASES_PADRAO, faseParaId, fasesParaIds } from "@/lib/mock/projetos";
 
 export type SaudeProjeto = "saudavel" | "atencao" | "atrasado" | "pausado";
 
@@ -25,20 +25,27 @@ const LABELS: Record<SaudeProjeto, string> = {
 export const SAUDE_ESTILO: Record<SaudeProjeto, { barra: string; badge: string }> = {
   saudavel: { barra: "bg-primary", badge: "border-primary/40 bg-primary/10 text-primary" },
   atencao: { barra: "bg-amber-400", badge: "border-amber-400/40 bg-amber-400/10 text-amber-300" },
-  atrasado: { barra: "bg-destructive", badge: "border-destructive/40 bg-destructive/10 text-destructive" },
-  pausado: { barra: "bg-muted-foreground", badge: "border-muted-foreground/30 bg-muted/20 text-muted-foreground" },
+  atrasado: {
+    barra: "bg-destructive",
+    badge: "border-destructive/40 bg-destructive/10 text-destructive",
+  },
+  pausado: {
+    barra: "bg-muted-foreground",
+    badge: "border-muted-foreground/30 bg-muted/20 text-muted-foreground",
+  },
 };
 
 // Progresso operacional: cada tarefa avança proporcionalmente conforme percorre
 // as colunas do fluxo. Conclusão vale 100%, independentemente da coluna.
 export function calcularPercentualFluxo(projeto: Projeto, tarefas: Tarefa[]): number {
-  const ts = tarefas.filter(t => t.projetoId === projeto.id);
+  const ts = tarefas.filter((t) => t.projetoId === projeto.id);
   if (!ts.length) return 0;
-  const fases = projeto.fases?.length ? projeto.fases : FASES_PADRAO;
+  const fases = fasesParaIds(projeto.fases?.length ? projeto.fases : FASES_PADRAO);
   const ultimo = Math.max(1, fases.length - 1);
   const soma = ts.reduce((total, tarefa) => {
-    if (tarefa.concluida || tarefa.status === "concluida") return total + 1;
-    const indice = fases.indexOf(tarefa.status);
+    const statusId = faseParaId(tarefa.status);
+    if (tarefa.concluida || statusId === "concluida") return total + 1;
+    const indice = fases.indexOf(statusId);
     return total + (indice < 0 ? 0 : Math.min(1, Math.max(0, indice / ultimo)));
   }, 0);
   return Math.round((soma / ts.length) * 100);
@@ -57,15 +64,15 @@ export function calcularResumoProgresso(
   tarefas: Tarefa[],
   hoje: Date = new Date(),
 ): ResumoProgresso {
-  const ts = tarefas.filter(t => t.projetoId === projeto.id);
+  const ts = tarefas.filter((t) => t.projetoId === projeto.id);
   const total = ts.length;
-  const concluidas = ts.filter(t => t.concluida).length;
+  const concluidas = ts.filter((t) => t.concluida).length;
   const percentual = calcularPercentualFluxo(projeto, tarefas);
 
   const inicioHoje = new Date(hoje);
   inicioHoje.setHours(0, 0, 0, 0);
 
-  const atrasadas = ts.filter(t => {
+  const atrasadas = ts.filter((t) => {
     if (t.concluida || !t.prazo) return false;
     const prazo = parseDataLocal(t.prazo);
     return prazo !== null && prazo < inicioHoje;
