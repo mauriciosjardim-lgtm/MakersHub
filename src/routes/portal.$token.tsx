@@ -425,9 +425,9 @@ function ClientPortalPage() {
               accent={accent}
             />
           )}
-          {view === "approvals" && activeProject && (
+          {view === "approvals" && (
             <ApprovalsView
-              project={activeProject}
+              projects={portal.projects}
               approvingId={approvingId}
               onRespond={respond}
               accent={accent}
@@ -459,9 +459,14 @@ function PortalSidebar({
   onSignOut: () => void;
   signingOut: boolean;
 }) {
-  const approvals =
-    project?.deliverables.filter((item) => item.kind !== "delivery" && item.status === "revisao")
-      .length ?? 0;
+  const approvals = portal.projects.reduce(
+    (total, item) =>
+      total +
+      item.deliverables.filter(
+        (deliverable) => deliverable.kind !== "delivery" && deliverable.status === "revisao",
+      ).length,
+    0,
+  );
 
   return (
     <aside className="fixed inset-y-0 left-0 z-30 hidden w-[272px] flex-col border-r border-sidebar-border bg-sidebar px-3 py-4 text-sidebar-foreground lg:flex">
@@ -671,8 +676,10 @@ function OverviewView({
   accent: string;
 }) {
   if (!project) return <EmptyState />;
-  const approvals = project.deliverables.filter(
-    (item) => item.kind !== "delivery" && item.status === "revisao",
+  const approvals = portal.projects.flatMap((item) =>
+    item.deliverables.filter(
+      (deliverable) => deliverable.kind !== "delivery" && deliverable.status === "revisao",
+    ),
   );
   const changesRequested = project.deliverables.filter(
     (item) => item.kind !== "delivery" && item.status === "ajustes",
@@ -1160,12 +1167,12 @@ function ProductionStatus({ project, accent }: { project: PortalProject; accent:
 }
 
 function ApprovalsView({
-  project,
+  projects,
   approvingId,
   onRespond,
   accent,
 }: {
-  project: PortalProject;
+  projects: PortalProject[];
   approvingId: string | null;
   onRespond: (
     item: PortalDeliverable,
@@ -1174,11 +1181,12 @@ function ApprovalsView({
   ) => Promise<boolean>;
   accent: string;
 }) {
-  const pending = project.deliverables.filter(
-    (item) => item.kind !== "delivery" && item.status === "revisao",
+  const items = projects.flatMap((project) =>
+    project.deliverables.map((item) => ({ item, project })),
   );
-  const history = project.deliverables.filter(
-    (item) =>
+  const pending = items.filter(({ item }) => item.kind !== "delivery" && item.status === "revisao");
+  const history = items.filter(
+    ({ item }) =>
       item.kind !== "delivery" &&
       (item.status === "aprovado" || item.status === "entregue" || item.status === "ajustes"),
   );
@@ -1223,7 +1231,7 @@ function ApprovalsView({
           />
         ) : (
           <div className="space-y-4">
-            {pending.map((item, index) => (
+            {pending.map(({ item, project }, index) => (
               <ApprovalCard
                 key={item.id}
                 item={item}
@@ -1243,18 +1251,25 @@ function ApprovalsView({
           <EmptyPanel
             icon={ClipboardCheck}
             title="O histórico começa aqui"
-            description="As decisões deste projeto aparecerão nesta seção."
+            description="As decisões dos seus projetos aparecerão nesta seção."
           />
         ) : (
           <div className="divide-y divide-white/[0.06] overflow-hidden rounded-3xl border border-white/[0.08] bg-white/[0.02]">
-            {history.map((item) => (
+            {history.map(({ item, project }) => (
               <div key={item.id} className="flex items-center gap-3 px-4 py-4 sm:px-5">
                 {item.status === "ajustes" ? (
                   <MessageSquareText className="size-4 text-red-300" />
                 ) : (
                   <CheckCircle2 className="size-4" style={{ color: accent }} />
                 )}
-                <span className="min-w-0 flex-1 truncate text-sm">{item.title}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm">{item.title}</span>
+                  {projects.length > 1 && (
+                    <span className="mt-0.5 block truncate text-[9px] text-white/25">
+                      {project.name}
+                    </span>
+                  )}
+                </span>
                 <span className="hidden text-[10px] uppercase tracking-[.12em] text-white/25 sm:inline">
                   {item.status === "ajustes" ? "Alterações solicitadas" : "Aprovado"}
                 </span>
@@ -1454,7 +1469,12 @@ function ApprovalCard({
             </span>
           </button>
         )}
-        <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-2 p-3">
+        <div
+          className={cn(
+            "pointer-events-none absolute inset-x-0 top-0 items-start justify-between gap-2 p-3",
+            embedUrl && previewRequested ? "hidden sm:flex" : "flex",
+          )}
+        >
           <span className="inline-flex items-center gap-1.5 rounded-full bg-black/60 px-2.5 py-1 text-[8px] font-semibold uppercase tracking-[.14em] text-amber-200 backdrop-blur-sm">
             <span className="relative flex size-1.5">
               <span className="absolute inline-flex size-full animate-ping rounded-full bg-amber-300 opacity-60" />
@@ -1483,6 +1503,11 @@ function ApprovalCard({
         <div>
           <div className="flex items-center gap-2 text-[9px] font-medium uppercase tracking-[.18em] text-[var(--portal-accent)]">
             <span className="size-1.5 rounded-full bg-[var(--portal-accent)]" />
+            {embedUrl && previewRequested && (
+              <span className="rounded-full bg-white/[0.05] px-2 py-1 text-white/45 sm:hidden">
+                {item.version_label || item.type}
+              </span>
+            )}
             Material para aprovação
           </div>
           <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-2 text-[9px] uppercase tracking-[.13em] text-white/38">
