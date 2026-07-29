@@ -359,6 +359,8 @@ export interface Database {
           observacoes: string | null;
           accent_color: string | null;
           arquivado: boolean;
+          cliente_ativo: boolean;
+          status: "prospect" | "cliente" | "inativo";
           portal_enabled: boolean;
           portal_token: string | null;
           portal_last_access_at: string | null;
@@ -376,6 +378,8 @@ export interface Database {
           observacoes?: string | null;
           accent_color?: string | null;
           arquivado?: boolean;
+          cliente_ativo?: boolean;
+          status?: "prospect" | "cliente" | "inativo";
           portal_enabled?: boolean;
           portal_token?: string | null;
           portal_last_access_at?: string | null;
@@ -433,6 +437,18 @@ export interface Database {
           observacoes: string | null;
           criado_em: string;
           arquivado: boolean;
+          arquivado_em: string | null;
+          arquivado_por: string | null;
+          motivo_arquivamento: string | null;
+          etapa_antes_arquivar:
+            | "novo"
+            | "diagnostico"
+            | "reuniao"
+            | "proposta"
+            | "negociacao"
+            | "fechado"
+            | "perdido"
+            | null;
         };
         Insert: {
           id?: string;
@@ -455,6 +471,18 @@ export interface Database {
           observacoes?: string | null;
           criado_em?: string;
           arquivado?: boolean;
+          arquivado_em?: string | null;
+          arquivado_por?: string | null;
+          motivo_arquivamento?: string | null;
+          etapa_antes_arquivar?:
+            | "novo"
+            | "diagnostico"
+            | "reuniao"
+            | "proposta"
+            | "negociacao"
+            | "fechado"
+            | "perdido"
+            | null;
         };
         Update: Partial<Database["public"]["Tables"]["leads"]["Insert"]>;
         Relationships: [];
@@ -488,7 +516,9 @@ export interface Database {
             | "observacao"
             | "etapa_mudou"
             | "fechado"
-            | "perdido";
+            | "perdido"
+            | "arquivado"
+            | "restaurado";
           titulo: string;
           descricao: string | null;
           quando: string;
@@ -508,7 +538,9 @@ export interface Database {
             | "observacao"
             | "etapa_mudou"
             | "fechado"
-            | "perdido";
+            | "perdido"
+            | "arquivado"
+            | "restaurado";
           titulo: string;
           descricao?: string | null;
           quando?: string;
@@ -635,6 +667,28 @@ export interface Database {
         Update: Partial<Database["public"]["Tables"]["equipe_convites"]["Insert"]>;
         Relationships: [];
       };
+      comercial_lead_links: {
+        Row: {
+          id: string;
+          empresa_id: string;
+          lead_id: string;
+          tipo: "proposta" | "contrato" | "projeto" | "financeiro" | "onboarding";
+          entidade_id: string;
+          origem: "fechamento" | "manual";
+          criado_em: string;
+        };
+        Insert: {
+          id?: string;
+          empresa_id: string;
+          lead_id: string;
+          tipo: "proposta" | "contrato" | "projeto" | "financeiro" | "onboarding";
+          entidade_id: string;
+          origem?: "fechamento" | "manual";
+          criado_em?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["comercial_lead_links"]["Insert"]>;
+        Relationships: [];
+      };
       eventos: {
         Row: {
           id: string;
@@ -725,6 +779,58 @@ export interface Database {
           p_client_name: string | null;
         };
         Returns: boolean;
+      };
+      criar_lead_comercial: {
+        Args: {
+          p_empresa_nome: string;
+          p_contato_nome: string;
+          p_contato_email?: string | null;
+          p_contato_telefone?: string | null;
+          p_valor?: number;
+          p_responsavel?: string;
+          p_temperatura?: string;
+          p_origem?: string;
+          p_cidade?: string | null;
+          p_segmento?: string | null;
+        };
+        Returns: { lead_id: string; cliente_id: string; contato_id: string };
+      };
+      arquivar_lead_comercial: {
+        Args: { p_lead_id: string; p_motivo?: string | null };
+        Returns: Database["public"]["Tables"]["leads"]["Row"];
+      };
+      restaurar_lead_comercial: {
+        Args: { p_lead_id: string };
+        Returns: Database["public"]["Tables"]["leads"]["Row"];
+      };
+      excluir_lead_comercial: {
+        Args: { p_lead_id: string };
+        Returns: boolean;
+      };
+      mover_lead_comercial: {
+        Args: { p_lead_id: string; p_etapa: string };
+        Returns: Database["public"]["Tables"]["leads"]["Row"];
+      };
+      fechar_lead_comercial: {
+        Args: {
+          p_lead_id: string;
+          p_criar_proposta?: boolean;
+          p_criar_contrato?: boolean;
+          p_criar_projeto?: boolean;
+          p_criar_cobranca?: boolean;
+          p_promover_cliente?: boolean;
+          p_agendar_onboarding?: boolean;
+        };
+        Returns: {
+          lead_id: string;
+          criados: string[];
+          pulados: string[];
+          proposta_id: string | null;
+          contrato_id: string | null;
+          projeto_id: string | null;
+          financeiro_id: string | null;
+          onboarding_id: string | null;
+        };
       };
     };
   };

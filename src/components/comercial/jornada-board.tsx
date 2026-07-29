@@ -9,13 +9,22 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import { Archive, ArchiveRestore, Check, Pencil, X } from "lucide-react";
+import { Archive, ArchiveRestore, Check, Pencil, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   comercial,
   fmtBRL,
+  getEmpresa,
   useComercial,
   useEtapasComercial,
   type EtapaJornada,
@@ -25,67 +34,139 @@ import { cn } from "@/lib/utils";
 import { EtapaIcon } from "./etapa-icon";
 import { LeadCard } from "./lead-card";
 import { LeadDrawer } from "./lead-drawer";
+import { FecharModal } from "./fechar-modal";
+import { ExcluirLeadDialog } from "./excluir-lead-dialog";
+import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
 export function JornadaBoard({ filtroFn }: { filtroFn?: (lead: Lead) => boolean }) {
   const leads = useComercial((store) => store.leads);
   const leadsArquivados = useComercial((store) => store.leadsArquivados);
   const etapas = useEtapasComercial();
-  const [mostrarArquivados, setMostrarArquivados] = useState(false);
   const [openLead, setOpenLead] = useState<string | null>(null);
   const [activeLead, setActiveLead] = useState<Lead | null>(null);
-  const origem = mostrarArquivados ? leadsArquivados : leads;
-  const filtrados = useMemo(
-    () => (filtroFn ? origem.filter(filtroFn) : origem),
-    [filtroFn, origem],
+  const [mostrarArquivados, setMostrarArquivados] = useState(false);
+  const [leadParaArquivar, setLeadParaArquivar] = useState<Lead | null>(null);
+  const [leadParaExcluir, setLeadParaExcluir] = useState<Lead | null>(null);
+  const [leadParaFechar, setLeadParaFechar] = useState<Lead | null>(null);
+  const [motivoArquivo, setMotivoArquivo] = useState("");
+  const [processando, setProcessando] = useState(false);
+  const filtrados = useMemo(() => (filtroFn ? leads.filter(filtroFn) : leads), [filtroFn, leads]);
+  const arquivados = useMemo(
+    () => (filtroFn ? leadsArquivados.filter(filtroFn) : leadsArquivados),
+    [filtroFn, leadsArquivados],
   );
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
   function onDragStart(event: DragStartEvent) {
-    if (mostrarArquivados) return;
     setActiveLead(leads.find((lead) => lead.id === event.active.id) ?? null);
   }
 
   async function onDragEnd(event: DragEndEvent) {
     setActiveLead(null);
-    if (mostrarArquivados) return;
     const leadId = event.active.id as string;
     const destino = event.over?.id as EtapaJornada | undefined;
     if (!destino) return;
     const lead = leads.find((item) => item.id === leadId);
     if (!lead || lead.etapa === destino) return;
+    if (destino === "fechado") {
+      setLeadParaFechar(lead);
+      return;
+    }
     const sucesso = await comercial.moverEtapa(leadId, destino);
     if (sucesso) {
       toast.success(`Movido para ${etapas.find((etapa) => etapa.id === destino)?.label}.`);
     }
   }
 
-  const arquivar = async (leadId: string, arquivado: boolean) => {
-    const sucesso = await comercial.arquivarLead(leadId, arquivado);
-    if (!sucesso) return;
-    toast.success(arquivado ? "Oportunidade arquivada." : "Oportunidade restaurada.");
-  };
-
   return (
     <>
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-[11px] text-muted-foreground">
-          Clique no título de uma coluna para personalizar sua jornada.
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-xs text-muted-foreground">
+          {filtrados.length}{" "}
+          {filtrados.length === 1 ? "oportunidade ativa" : "oportunidades ativas"}
         </p>
         <Button
           type="button"
-          variant={mostrarArquivados ? "default" : "outline"}
+          variant={mostrarArquivados ? "secondary" : "outline"}
           size="sm"
           className="shrink-0"
           onClick={() => setMostrarArquivados((valor) => !valor)}
         >
-          {mostrarArquivados ? (
-            <ArchiveRestore className="size-4" />
-          ) : (
-            <Archive className="size-4" />
-          )}
-          {mostrarArquivados ? "Voltar às oportunidades" : `Arquivadas (${leadsArquivados.length})`}
+          <Archive className="size-4" />
+          Arquivadas ({arquivados.length})
         </Button>
       </div>
+
+      {mostrarArquivados && (
+        <section className="overflow-hidden rounded-2xl border border-border bg-surface-1/35">
+          <div className="border-b border-border/60 px-4 py-3">
+            <h2 className="text-sm font-semibold">Arquivo comercial</h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Oportunidades fora da jornada ativa. Restaure ou exclua definitivamente.
+            </p>
+          </div>
+          {arquivados.length === 0 ? (
+            <div className="p-8 text-center text-sm text-muted-foreground">
+              Nenhuma oportunidade arquivada.
+            </div>
+          ) : (
+            <div className="divide-y divide-border/60">
+              {arquivados.map((lead) => (
+                <div
+                  key={lead.id}
+                  className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center"
+                >
+                  <button
+                    type="button"
+                    className="min-w-0 flex-1 text-left"
+                    onClick={() => setOpenLead(lead.id)}
+                  >
+                    <p className="truncate text-sm font-semibold">
+                      {getEmpresa(lead.empresaId)?.nome ?? "Empresa"}
+                    </p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {etapas.find((etapa) => etapa.id === lead.etapaAntesArquivar)?.label ??
+                        etapas.find((etapa) => etapa.id === lead.etapa)?.label}
+                      {lead.arquivadoEm
+                        ? ` · arquivada em ${format(new Date(lead.arquivadoEm), "dd/MM/yyyy", { locale: ptBR })}`
+                        : ""}
+                    </p>
+                    {lead.motivoArquivamento && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {lead.motivoArquivamento}
+                      </p>
+                    )}
+                  </button>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5"
+                      onClick={async () => {
+                        const ok = await comercial.restaurarLead(lead.id);
+                        if (ok) toast.success("Oportunidade restaurada para a jornada.");
+                      }}
+                    >
+                      <ArchiveRestore className="size-3.5" /> Restaurar
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      className="text-destructive"
+                      onClick={() => setLeadParaExcluir(lead)}
+                    >
+                      <Trash2 className="size-3.5" /> Excluir
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
         <div className="flex gap-3 overflow-x-auto pb-4">
@@ -100,7 +181,6 @@ export function JornadaBoard({ filtroFn }: { filtroFn?: (lead: Lead) => boolean 
                 cor={etapa.cor}
                 qtd={dela.length}
                 total={total}
-                vazioArquivado={mostrarArquivados}
                 onRename={async (novoLabel) => {
                   const sucesso = await comercial.renomearEtapa(etapa.id, novoLabel);
                   if (sucesso) toast.success("Nome da etapa atualizado.");
@@ -112,8 +192,8 @@ export function JornadaBoard({ filtroFn }: { filtroFn?: (lead: Lead) => boolean 
                     key={lead.id}
                     lead={lead}
                     onOpen={setOpenLead}
-                    onArchive={(id, valor) => void arquivar(id, valor)}
-                    dragDisabled={mostrarArquivados}
+                    onArchive={setLeadParaArquivar}
+                    onDelete={setLeadParaExcluir}
                   />
                 ))}
               </Coluna>
@@ -130,6 +210,58 @@ export function JornadaBoard({ filtroFn }: { filtroFn?: (lead: Lead) => boolean 
       </DndContext>
 
       <LeadDrawer leadId={openLead} onClose={() => setOpenLead(null)} />
+      {leadParaFechar && (
+        <FecharModal
+          lead={leadParaFechar}
+          open
+          onOpenChange={(open) => !open && setLeadParaFechar(null)}
+        />
+      )}
+
+      <Dialog open={!!leadParaArquivar} onOpenChange={(open) => !open && setLeadParaArquivar(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Arquivar oportunidade</DialogTitle>
+            <DialogDescription>
+              Ela sairá da jornada ativa e poderá ser restaurada depois.
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            value={motivoArquivo}
+            onChange={(event) => setMotivoArquivo(event.target.value)}
+            placeholder="Motivo do arquivamento (opcional)"
+          />
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              disabled={processando}
+              onClick={() => setLeadParaArquivar(null)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              disabled={processando}
+              onClick={async () => {
+                if (!leadParaArquivar) return;
+                setProcessando(true);
+                const ok = await comercial.arquivarLead(leadParaArquivar.id, motivoArquivo);
+                setProcessando(false);
+                if (!ok) return;
+                toast.success("Oportunidade arquivada.");
+                setMotivoArquivo("");
+                setLeadParaArquivar(null);
+              }}
+            >
+              {processando ? "Arquivando…" : "Arquivar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <ExcluirLeadDialog
+        lead={leadParaExcluir}
+        onOpenChange={(open) => !open && setLeadParaExcluir(null)}
+      />
     </>
   );
 }
@@ -140,7 +272,6 @@ function Coluna({
   cor,
   qtd,
   total,
-  vazioArquivado,
   onRename,
   children,
 }: {
@@ -149,7 +280,6 @@ function Coluna({
   cor: string;
   qtd: number;
   total: number;
-  vazioArquivado: boolean;
   onRename: (label: string) => Promise<boolean>;
   children: React.ReactNode;
 }) {
@@ -189,7 +319,7 @@ function Coluna({
         {children}
         {qtd === 0 && (
           <div className="rounded-lg border border-dashed border-border/60 p-4 text-center text-[11px] text-muted-foreground">
-            {vazioArquivado ? "Nenhuma oportunidade arquivada" : "Solte uma oportunidade aqui"}
+            Solte uma oportunidade aqui
           </div>
         )}
       </div>

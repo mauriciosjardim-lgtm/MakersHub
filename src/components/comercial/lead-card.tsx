@@ -1,5 +1,5 @@
 import { useDraggable } from "@dnd-kit/core";
-import { Archive, ArchiveRestore, Flame, Snowflake, Thermometer } from "lucide-react";
+import { Archive, Flame, Snowflake, Thermometer, Trash2 } from "lucide-react";
 import { Danger, Calendar, Buildings2, DollarCircle, Profile } from "iconsax-react";
 import { formatDistanceToNow, isPast, isToday, format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -40,11 +40,13 @@ export function LeadCard({
   lead,
   onOpen,
   onArchive,
+  onDelete,
   dragDisabled = false,
 }: {
   lead: Lead;
   onOpen: (id: string) => void;
-  onArchive?: (id: string, arquivado: boolean) => void;
+  onArchive?: (lead: Lead) => void;
+  onDelete?: (lead: Lead) => void;
   dragDisabled?: boolean;
 }) {
   const empresa = getEmpresa(lead.empresaId);
@@ -83,22 +85,37 @@ export function LeadCard({
         isDragging && "opacity-30 pointer-events-none",
       )}
     >
-      {onArchive && (
-        <button
-          onClick={(event) => {
-            event.stopPropagation();
-            onArchive(lead.id, !lead.arquivado);
-          }}
-          className="absolute right-7 top-1.5 z-10 inline-flex size-7 items-center justify-center rounded-lg border border-border/70 bg-background/95 text-muted-foreground opacity-70 shadow-sm transition sm:opacity-0 sm:group-hover/card:opacity-100 hover:border-primary/40 hover:bg-primary/10 hover:text-primary focus-visible:opacity-100"
-          title={lead.arquivado ? "Restaurar oportunidade" : "Arquivar oportunidade"}
-          aria-label={lead.arquivado ? "Restaurar oportunidade" : "Arquivar oportunidade"}
-        >
-          {lead.arquivado ? (
-            <ArchiveRestore className="size-3.5" />
-          ) : (
-            <Archive className="size-3.5" />
+      {(onArchive || onDelete) && (
+        <div className="absolute right-7 top-1.5 z-10 flex gap-1">
+          {onArchive && (
+            <button
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation();
+                onArchive(lead);
+              }}
+              className="inline-flex size-7 items-center justify-center rounded-lg border border-border/70 bg-background/95 text-muted-foreground opacity-80 shadow-sm transition hover:border-primary/40 hover:bg-primary/10 hover:text-primary hover:opacity-100 focus-visible:opacity-100"
+              title="Arquivar oportunidade"
+              aria-label="Arquivar oportunidade"
+            >
+              <Archive className="size-3.5" />
+            </button>
           )}
-        </button>
+          {onDelete && (
+            <button
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation();
+                onDelete(lead);
+              }}
+              className="inline-flex size-7 items-center justify-center rounded-lg border border-border/70 bg-background/95 text-muted-foreground opacity-80 shadow-sm transition hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive hover:opacity-100 focus-visible:opacity-100"
+              title="Excluir oportunidade"
+              aria-label="Excluir oportunidade"
+            >
+              <Trash2 className="size-3.5" />
+            </button>
+          )}
+        </div>
       )}
 
       {/* Bolinha de temperatura no canto */}
@@ -111,7 +128,7 @@ export function LeadCard({
       />
 
       {/* Empresa */}
-      <p className="flex items-center gap-1.5 pr-14 text-[14px] font-semibold leading-tight text-foreground">
+      <p className="flex items-center gap-1.5 pr-20 text-[14px] font-semibold leading-tight text-foreground">
         <Buildings2
           size={14}
           color="currentColor"
