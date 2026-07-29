@@ -42,6 +42,42 @@ async function normalizeCatastrophicSsrResponse(response: Response): Promise<Res
   });
 }
 
+const PORTAL_MEDIA_PATH = /^\/api\/portal\/media\/([A-Za-z0-9_-]{10,128})$/;
+
+async function proxyPortalMedia(request: Request, fileId: string): Promise<Response> {
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    return new Response("Method not allowed", { status: 405, headers: { Allow: "GET, HEAD" } });
+  }
+
+  const upstreamHeaders = new Headers();
+  const range = request.headers.get("range");
+  if (range) upstreamHeaders.set("range", range);
+
+  const upstream = await fetch(
+    `https://drive.usercontent.google.com/download?id=${encodeURIComponent(fileId)}&export=download&confirm=t`,
+    { method: request.method, headers: upstreamHeaders, redirect: "follow" },
+  );
+
+  if (!upstream.ok && upstream.status !== 206) {
+    return new Response("Media unavailable", { status: upstream.status });
+  }
+
+  const headers = new Headers({
+    "Accept-Ranges": upstream.headers.get("accept-ranges") || "bytes",
+    "Cache-Control": "private, max-age=3600",
+    "Content-Type": upstream.headers.get("content-type") || "video/mp4",
+  });
+  for (const name of ["content-length", "content-range", "etag", "last-modified"]) {
+    const value = upstream.headers.get(name);
+    if (value) headers.set(name, value);
+  }
+
+  return new Response(request.method === "HEAD" ? null : upstream.body, {
+    status: upstream.status,
+    headers,
+  });
+}
+
 const CONTENT_SECURITY_POLICY_REPORT_ONLY = [
   "default-src 'self'",
   "base-uri 'self'",
@@ -115,6 +151,11 @@ export default {
         await handleCanonicalAsaasWebhook(request, (task) => ctx.waitUntil(task)),
         isHttps,
       );
+    }
+
+    const portalMediaMatch = url.pathname.match(PORTAL_MEDIA_PATH);
+    if (portalMediaMatch) {
+      return withSecurityHeaders(await proxyPortalMedia(request, portalMediaMatch[1]), isHttps);
     }
 
     try {

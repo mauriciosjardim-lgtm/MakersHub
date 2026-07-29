@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import {
   Check,
   CheckCircle2,
@@ -1321,46 +1321,40 @@ function ApprovalCard({
   const [previewSlow, setPreviewSlow] = useState(false);
   const [previewRequested, setPreviewRequested] = useState(priority);
   const [thumbnailFailed, setThumbnailFailed] = useState(false);
-  const playerShellRef = useRef<HTMLDivElement>(null);
-  const previewFrameRef = useRef<HTMLIFrameElement>(null);
+  const [useNativeMobilePlayer, setUseNativeMobilePlayer] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      window.matchMedia("(max-width: 639px)").matches &&
+      Boolean(item.drive_file_id),
+  );
   const thumbnail = driveThumbnailUrl(item.drive_file_id);
   const poster = thumbnailFailed ? cover : thumbnail || cover;
   const embedUrl = item.embed_url || (item.url ? getReviewEmbedUrl(item.url) : null);
+  const nativeVideoUrl = item.drive_file_id
+    ? `/api/portal/media/${encodeURIComponent(item.drive_file_id)}`
+    : null;
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 639px)");
+    const syncPlayer = () => setUseNativeMobilePlayer(media.matches && Boolean(nativeVideoUrl));
+    syncPlayer();
+    media.addEventListener("change", syncPlayer);
+    return () => media.removeEventListener("change", syncPlayer);
+  }, [nativeVideoUrl]);
 
   useEffect(() => {
     setPreviewReady(false);
     setPreviewSlow(false);
     setPreviewRequested(priority);
     setThumbnailFailed(false);
-  }, [item.drive_file_id, embedUrl, priority]);
+  }, [item.drive_file_id, embedUrl, priority, useNativeMobilePlayer]);
 
   useEffect(() => {
-    if (!embedUrl || !previewRequested || previewReady) return;
+    if (!(useNativeMobilePlayer ? nativeVideoUrl : embedUrl) || !previewRequested || previewReady)
+      return;
     const timeout = window.setTimeout(() => setPreviewSlow(true), 8_000);
     return () => window.clearTimeout(timeout);
-  }, [embedUrl, previewReady, previewRequested]);
-
-  useEffect(() => {
-    if (!embedUrl || !previewRequested || !window.matchMedia("(max-width: 639px)").matches) return;
-
-    let releaseTimer: number | null = null;
-    const releaseFrameFocus = () => {
-      window.setTimeout(() => {
-        if (document.activeElement !== previewFrameRef.current || releaseTimer !== null) return;
-        releaseTimer = window.setTimeout(() => {
-          previewFrameRef.current?.blur();
-          playerShellRef.current?.focus({ preventScroll: true });
-          releaseTimer = null;
-        }, 3_000);
-      });
-    };
-    window.addEventListener("blur", releaseFrameFocus);
-
-    return () => {
-      window.removeEventListener("blur", releaseFrameFocus);
-      if (releaseTimer !== null) window.clearTimeout(releaseTimer);
-    };
-  }, [embedUrl, previewRequested]);
+  }, [embedUrl, nativeVideoUrl, previewReady, previewRequested, useNativeMobilePlayer]);
 
   const requestChanges = async () => {
     const validPoints = adjustmentPoints.filter((point) => point.change.trim());
@@ -1414,11 +1408,7 @@ function ApprovalCard({
       className="group grid overflow-hidden rounded-3xl border border-white/[0.09] bg-white/[0.025] transition hover:border-[var(--portal-accent)]/25 lg:grid-cols-[minmax(360px,.95fr)_minmax(0,1.05fr)]"
       aria-busy={approving}
     >
-      <div
-        ref={playerShellRef}
-        tabIndex={-1}
-        className="relative aspect-video w-full overflow-hidden bg-black outline-none lg:self-start"
-      >
+      <div className="relative aspect-video w-full overflow-hidden bg-black lg:self-start">
         {poster ? (
           <img
             src={poster}
@@ -1432,9 +1422,18 @@ function ApprovalCard({
         ) : (
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(144,248,38,.06),transparent_55%),#0c0e0c]" />
         )}
-        {embedUrl && previewRequested ? (
+        {useNativeMobilePlayer && nativeVideoUrl && previewRequested ? (
+          <video
+            src={nativeVideoUrl}
+            poster={poster || undefined}
+            controls
+            playsInline
+            preload={priority ? "metadata" : "none"}
+            className="absolute inset-0 size-full bg-black object-contain"
+            onLoadedData={() => setPreviewReady(true)}
+          />
+        ) : embedUrl && previewRequested ? (
           <iframe
-            ref={previewFrameRef}
             src={embedUrl}
             title={`${item.title} ${item.version_label || ""}`}
             className={cn(
