@@ -1,13 +1,14 @@
 import { useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Download, FileUp, Phone, Search, Star, UserPlus, UsersRound } from "lucide-react";
+import { Download, FileUp, Phone, Search, Star, Trash2, UserPlus, UsersRound } from "lucide-react";
 import { Edit2, Sms } from "iconsax-react";
 import { toast } from "sonner";
 import { ImportarContatosModal } from "@/components/comercial/importar-contatos-modal";
 import { NovoContatoModal } from "@/components/comercial/novo-contato-modal";
+import { ExcluirRegistroDialog } from "@/components/comercial/excluir-registro-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { comercial, useComercial } from "@/lib/hooks/useComercial";
+import { comercial, useComercial, type Contato } from "@/lib/hooks/useComercial";
 import {
   gerarCsvContatos,
   normalizarTexto,
@@ -21,9 +22,12 @@ export const Route = createFileRoute("/comercial/contatos")({
 function ContatosPage() {
   const contatos = useComercial((store) => store.contatos);
   const empresas = useComercial((store) => store.empresas);
+  const leads = useComercial((store) => store.leads);
+  const leadsArquivados = useComercial((store) => store.leadsArquivados);
   const [busca, setBusca] = useState("");
   const [novoAberto, setNovoAberto] = useState(false);
   const [importacaoAberta, setImportacaoAberta] = useState(false);
+  const [contatoParaExcluir, setContatoParaExcluir] = useState<Contato | null>(null);
   const empresasPorId = useMemo(
     () => new Map(empresas.map((empresa) => [empresa.id, empresa])),
     [empresas],
@@ -117,6 +121,7 @@ function ContatosPage() {
                 <Th>Cargo</Th>
                 <Th>E-mail</Th>
                 <Th>Telefone</Th>
+                <Th>Ações</Th>
               </tr>
             </thead>
             <tbody>
@@ -176,6 +181,19 @@ function ContatosPage() {
                         />
                       </div>
                     </td>
+                    <td className="px-4 py-3 text-right align-middle">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="size-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                        onClick={() => setContatoParaExcluir(contato)}
+                        aria-label={`Excluir ${contato.nome}`}
+                        title="Excluir contato"
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                    </td>
                   </tr>
                 );
               })}
@@ -215,6 +233,32 @@ function ContatosPage() {
 
       <NovoContatoModal open={novoAberto} onOpenChange={setNovoAberto} />
       <ImportarContatosModal open={importacaoAberta} onOpenChange={setImportacaoAberta} />
+      <ExcluirRegistroDialog
+        open={Boolean(contatoParaExcluir)}
+        onOpenChange={(open) => !open && setContatoParaExcluir(null)}
+        titulo="Excluir contato definitivamente"
+        descricao={
+          <>
+            O contato <strong className="text-foreground">{contatoParaExcluir?.nome}</strong> será
+            removido da base comercial.
+          </>
+        }
+        bloqueio={(() => {
+          if (!contatoParaExcluir) return undefined;
+          const quantidade = [...leads, ...leadsArquivados].filter(
+            (lead) => lead.contatoId === contatoParaExcluir.id,
+          ).length;
+          return quantidade > 0
+            ? `Este contato ainda está ligado a ${quantidade} lead(s). Exclua esses leads antes de remover o contato.`
+            : undefined;
+        })()}
+        onConfirm={async () => {
+          if (!contatoParaExcluir) return false;
+          const excluido = await comercial.removerContato(contatoParaExcluir.id);
+          if (excluido) toast.success(`${contatoParaExcluir.nome} foi excluído`);
+          return excluido;
+        }}
+      />
     </div>
   );
 }

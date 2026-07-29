@@ -36,6 +36,10 @@ type LeadRow = Database["public"]["Tables"]["leads"]["Row"];
 type LeadUpdate = Database["public"]["Tables"]["leads"]["Update"];
 type TimelineRow = Database["public"]["Tables"]["timeline_lead"]["Row"];
 type TarefaRow = Database["public"]["Tables"]["tarefas_lead"]["Row"];
+type LeadLinkRow = Pick<
+  Database["public"]["Tables"]["comercial_lead_links"]["Row"],
+  "lead_id" | "tipo" | "entidade_id"
+>;
 
 // re-exporta constantes/helpers para que componentes só importem daqui
 export { ETAPAS, labelEtapa };
@@ -95,6 +99,7 @@ function rowToEmpresa(r: EmpresaRow): Empresa {
     observacoes: r.observacoes ?? undefined,
     accentColor: r.accent_color ?? undefined,
     arquivado: r.arquivado ?? false,
+    status: r.status ?? "prospect",
   };
 }
 
@@ -137,11 +142,40 @@ function rowToLead(r: LeadRow): Lead {
     observacoes: r.observacoes ?? undefined,
     criadoEm: r.criado_em,
     arquivado: r.arquivado ?? false,
+    arquivadoEm: r.arquivado_em ?? (r.arquivado ? r.criado_em : undefined),
+    arquivadoPor: r.arquivado_por ?? undefined,
+    motivoArquivamento: r.motivo_arquivamento ?? undefined,
+    etapaAntesArquivar: r.etapa_antes_arquivar ?? undefined,
     propostasIds: [],
     contratosIds: [],
     projetosIds: [],
     lancamentosIds: [],
   };
+}
+
+function relacionarLeads(rows: LeadRow[], links: LeadLinkRow[]) {
+  const porLead = new Map<
+    string,
+    Pick<Lead, "propostasIds" | "contratosIds" | "projetosIds" | "lancamentosIds">
+  >();
+  const rel = (leadId: string) => {
+    const atual = porLead.get(leadId);
+    if (atual) return atual;
+    const novo = {
+      propostasIds: [] as string[],
+      contratosIds: [] as string[],
+      projetosIds: [] as string[],
+      lancamentosIds: [] as string[],
+    };
+    porLead.set(leadId, novo);
+    return novo;
+  };
+
+  for (const link of links) {
+    if (link.tipo === "projeto") rel(link.lead_id).projetosIds.push(link.entidade_id);
+  }
+
+  return rows.map((row) => ({ ...rowToLead(row), ...rel(row.id) }));
 }
 
 function rowToTimeline(r: TimelineRow): TimelineEvent {
@@ -221,17 +255,22 @@ async function init() {
   setStore({ loading: true, error: null });
 
   try {
-    const [e, c, l, tl, ta, cfg] = await Promise.all([
+    const [e, c, l, tl, ta, cfg, links] = await Promise.all([
       supabase.from("clientes_comercial").select("*").order("nome"),
       supabase.from("contatos_comercial").select("*").order("nome"),
       supabase.from("leads").select("*").order("criado_em", { ascending: false }),
       supabase.from("timeline_lead").select("*").order("quando", { ascending: false }),
       supabase.from("tarefas_lead").select("*").order("prazo"),
       supabase.from("configuracao_comercial").select("etapas_labels").maybeSingle(),
+      supabase
+        .from("comercial_lead_links")
+        .select("lead_id,tipo,entidade_id")
+        .eq("tipo", "projeto"),
     ]);
-    const queryError = e.error ?? c.error ?? l.error ?? tl.error ?? ta.error ?? cfg.error;
+    const queryError =
+      e.error ?? c.error ?? l.error ?? tl.error ?? ta.error ?? cfg.error ?? links.error;
     if (queryError) throw queryError;
-    const todosLeads = (l.data ?? []).map(rowToLead);
+    const todosLeads = relacionarLeads(l.data ?? [], links.data ?? []);
 
     setStore({
       empresas: (e.data ?? []).map(rowToEmpresa),
@@ -265,6 +304,11 @@ async function init() {
         { event: "*", schema: "public", table: "configuracao_comercial" },
         refresh,
       )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "comercial_lead_links" },
+        refresh,
+      )
       .subscribe();
   } catch (error) {
     initialized = false;
@@ -277,17 +321,22 @@ async function init() {
 
 async function refresh() {
   try {
-    const [e, c, l, tl, ta, cfg] = await Promise.all([
+    const [e, c, l, tl, ta, cfg, links] = await Promise.all([
       supabase.from("clientes_comercial").select("*").order("nome"),
       supabase.from("contatos_comercial").select("*").order("nome"),
       supabase.from("leads").select("*").order("criado_em", { ascending: false }),
       supabase.from("timeline_lead").select("*").order("quando", { ascending: false }),
       supabase.from("tarefas_lead").select("*").order("prazo"),
       supabase.from("configuracao_comercial").select("etapas_labels").maybeSingle(),
+      supabase
+        .from("comercial_lead_links")
+        .select("lead_id,tipo,entidade_id")
+        .eq("tipo", "projeto"),
     ]);
-    const queryError = e.error ?? c.error ?? l.error ?? tl.error ?? ta.error ?? cfg.error;
+    const queryError =
+      e.error ?? c.error ?? l.error ?? tl.error ?? ta.error ?? cfg.error ?? links.error;
     if (queryError) throw queryError;
-    const todosLeads = (l.data ?? []).map(rowToLead);
+    const todosLeads = relacionarLeads(l.data ?? [], links.data ?? []);
     setStore({
       empresas: (e.data ?? []).map(rowToEmpresa),
       contatos: (c.data ?? []).map(rowToContato),
@@ -394,35 +443,14 @@ function atualizarLeadNasColecoes(leadId: string, atualizar: (lead: Lead) => Lea
 export const comercial = {
   async moverEtapa(leadId: string, etapa: EtapaJornada) {
     const lead = store.leads.find((l) => l.id === leadId);
-    if (!lead || lead.etapa === etapa) return false;
-    const anterior = lead.etapa;
-    const empresa_id = await getEmpresaId();
-    const [upd, ins] = await Promise.all([
-      supabase.from("leads").update({ etapa }).eq("id", leadId),
-      supabase.from("timeline_lead").insert({
-        empresa_id,
-        lead_id: leadId,
-        tipo: "etapa_mudou",
-        titulo: `Movido de ${getLabelEtapa(anterior)} → ${getLabelEtapa(etapa)}`,
-        quando: new Date().toISOString(),
-        autor: "Você",
-      }),
-    ]);
-    if (dbErro(upd.error ?? ins.error, "mover etapa do lead")) return false;
-    setStore({
-      leads: store.leads.map((l) => (l.id === leadId ? { ...l, etapa } : l)),
-      timeline: [
-        ...store.timeline,
-        {
-          id: `tl-${Date.now()}`,
-          leadId,
-          tipo: "etapa_mudou",
-          titulo: `Movido de ${getLabelEtapa(anterior)} → ${getLabelEtapa(etapa)}`,
-          quando: new Date().toISOString(),
-          autor: "Você",
-        },
-      ],
+    if (!lead) return false;
+    if (lead.etapa === etapa) return true;
+    const { error } = await supabase.rpc("mover_lead_comercial", {
+      p_lead_id: leadId,
+      p_etapa: etapa,
     });
+    if (dbErro(error, "mover etapa do lead")) return false;
+    await refresh();
     return true;
   },
 
@@ -449,10 +477,11 @@ export const comercial = {
       })
       .select()
       .single();
-    if (dbErro(error, "registrar evento")) return;
+    if (dbErro(error, "registrar evento")) return false;
     if (data) {
       setStore({ timeline: [rowToTimeline(data), ...store.timeline] });
     }
+    return true;
   },
 
   async addTarefa(leadId: string, titulo: string, prazo: string, responsavel = "Você") {
@@ -469,33 +498,45 @@ export const comercial = {
       })
       .select()
       .single();
-    if (dbErro(error, "criar tarefa do lead")) return;
+    if (dbErro(error, "criar tarefa do lead")) return false;
     if (data) setStore({ tarefas: [...store.tarefas, rowToTarefa(data)] });
+    return true;
   },
 
   async toggleTarefa(id: string) {
     const atual = store.tarefas.find((t) => t.id === id);
-    if (!atual) return;
-    await supabase.from("tarefas_lead").update({ feita: !atual.feita }).eq("id", id);
+    if (!atual) return false;
+    const { error } = await supabase
+      .from("tarefas_lead")
+      .update({ feita: !atual.feita })
+      .eq("id", id);
+    if (dbErro(error, "atualizar atividade")) return false;
     setStore({ tarefas: store.tarefas.map((t) => (t.id === id ? { ...t, feita: !t.feita } : t)) });
+    return true;
   },
 
   async setProximaAcao(leadId: string, acao: ProximaAcao | null) {
-    await supabase
+    const { error } = await supabase
       .from("leads")
       .update({ proxima_acao: acao as unknown as import("@/lib/database.types").Json })
       .eq("id", leadId);
+    if (dbErro(error, "salvar próxima ação")) return false;
     atualizarLeadNasColecoes(leadId, (lead) => ({ ...lead, proximaAcao: acao }));
+    return true;
   },
 
   async setObservacoes(leadId: string, observacoes: string) {
-    await supabase.from("leads").update({ observacoes }).eq("id", leadId);
+    const { error } = await supabase.from("leads").update({ observacoes }).eq("id", leadId);
+    if (dbErro(error, "salvar observações")) return false;
     atualizarLeadNasColecoes(leadId, (lead) => ({ ...lead, observacoes }));
+    return true;
   },
 
   async setTemperatura(leadId: string, temperatura: Temperatura) {
-    await supabase.from("leads").update({ temperatura }).eq("id", leadId);
+    const { error } = await supabase.from("leads").update({ temperatura }).eq("id", leadId);
+    if (dbErro(error, "atualizar temperatura")) return false;
     atualizarLeadNasColecoes(leadId, (lead) => ({ ...lead, temperatura }));
+    return true;
   },
 
   async updateLead(
@@ -507,8 +548,10 @@ export const comercial = {
     if (patch.responsavel !== undefined) payload.responsavel = patch.responsavel;
     if (patch.origem !== undefined) payload.origem = patch.origem;
     if (patch.temperatura !== undefined) payload.temperatura = patch.temperatura;
-    await supabase.from("leads").update(payload).eq("id", leadId);
+    const { error } = await supabase.from("leads").update(payload).eq("id", leadId);
+    if (dbErro(error, "atualizar lead")) return false;
     atualizarLeadNasColecoes(leadId, (lead) => ({ ...lead, ...patch }));
+    return true;
   },
 
   async updateEmpresa(empresaId: string, patch: Partial<Omit<Empresa, "id">>) {
@@ -521,10 +564,12 @@ export const comercial = {
     if (patch.observacoes !== undefined) payload.observacoes = patch.observacoes;
     if (patch.accentColor !== undefined) payload.accent_color = patch.accentColor;
     if (patch.arquivado !== undefined) payload.arquivado = patch.arquivado;
-    await supabase.from("clientes_comercial").update(payload).eq("id", empresaId);
+    const { error } = await supabase.from("clientes_comercial").update(payload).eq("id", empresaId);
+    if (dbErro(error, "atualizar empresa")) return false;
     setStore({
       empresas: store.empresas.map((e) => (e.id === empresaId ? { ...e, ...patch } : e)),
     });
+    return true;
   },
 
   async removerEmpresa(empresaId: string) {
@@ -615,6 +660,13 @@ export const comercial = {
     setStore({
       contatos: store.contatos.map((c) => (c.id === contatoId ? { ...c, ...patch } : c)),
     });
+    return true;
+  },
+
+  async removerContato(contatoId: string) {
+    const { error } = await supabase.from("contatos_comercial").delete().eq("id", contatoId);
+    if (dbErro(error, "excluir contato")) return false;
+    setStore({ contatos: store.contatos.filter((contato) => contato.id !== contatoId) });
     return true;
   },
 
@@ -715,72 +767,21 @@ export const comercial = {
     cidade?: string;
     segmento?: string;
   }) {
-    const empresa_id = await getEmpresaId();
-
-    // 1. criar cliente
-    const { data: clienteData, error: e1 } = await supabase
-      .from("clientes_comercial")
-      .insert({
-        empresa_id,
-        nome: input.empresaNome,
-        segmento: input.segmento || "Não informado",
-        cidade: input.cidade || "Não informado",
-      })
-      .select()
-      .single();
-    if (dbErro(e1, "criar cliente") || !clienteData) return null;
-
-    // 2. criar contato
-    const { data: contatoData, error: e2 } = await supabase
-      .from("contatos_comercial")
-      .insert({
-        empresa_id,
-        cliente_id: clienteData.id,
-        nome: input.contatoNome,
-        cargo: "—",
-        email: input.contatoEmail || "—",
-        telefone: input.contatoTelefone || "—",
-        principal: true,
-      })
-      .select()
-      .single();
-    if (dbErro(e2, "criar contato") || !contatoData) return null;
-
-    // 3. criar lead
-    const { data: leadData, error: e3 } = await supabase
-      .from("leads")
-      .insert({
-        empresa_id,
-        cliente_id: clienteData.id,
-        contato_id: contatoData.id,
-        etapa: "novo",
-        valor: input.valor,
-        responsavel: input.responsavel,
-        temperatura: input.temperatura,
-        origem: input.origem,
-      })
-      .select()
-      .single();
-    if (dbErro(e3, "criar lead") || !leadData) return null;
-
-    // 4. criar evento de timeline
-    await supabase.from("timeline_lead").insert({
-      empresa_id,
-      lead_id: leadData.id,
-      tipo: "criado",
-      titulo: "Lead criado",
-      descricao: input.empresaNome,
-      quando: new Date().toISOString(),
-      autor: input.responsavel,
+    const { data, error } = await supabase.rpc("criar_lead_comercial", {
+      p_empresa_nome: input.empresaNome,
+      p_contato_nome: input.contatoNome,
+      p_contato_email: input.contatoEmail || null,
+      p_contato_telefone: input.contatoTelefone || null,
+      p_valor: input.valor,
+      p_responsavel: input.responsavel,
+      p_temperatura: input.temperatura,
+      p_origem: input.origem,
+      p_cidade: input.cidade || null,
+      p_segmento: input.segmento || null,
     });
-
-    setStore({
-      empresas: [...store.empresas, rowToEmpresa(clienteData)],
-      contatos: [...store.contatos, rowToContato(contatoData)],
-      leads: [rowToLead(leadData), ...store.leads],
-    });
-
-    return leadData.id as string;
+    if (dbErro(error, "criar lead") || !data?.lead_id) return null;
+    await refresh();
+    return data.lead_id;
   },
 
   async renomearEtapa(etapa: EtapaJornada, novoLabel: string) {
@@ -803,35 +804,44 @@ export const comercial = {
     return true;
   },
 
-  async arquivarLead(leadId: string, arquivado: boolean) {
-    const origem = arquivado ? store.leads : store.leadsArquivados;
-    const lead = origem.find((item) => item.id === leadId);
-    if (!lead) return false;
-    const { error } = await supabase.from("leads").update({ arquivado }).eq("id", leadId);
-    if (dbErro(error, arquivado ? "arquivar lead" : "restaurar lead")) return false;
+  async arquivarLead(leadId: string, motivo?: string) {
+    const { error } = await supabase.rpc("arquivar_lead_comercial", {
+      p_lead_id: leadId,
+      p_motivo: motivo?.trim() || null,
+    });
+    if (dbErro(error, "arquivar lead")) return false;
+    await refresh();
+    return true;
+  },
 
-    const atualizado = { ...lead, arquivado };
-    setStore(
-      arquivado
-        ? {
-            leads: store.leads.filter((item) => item.id !== leadId),
-            leadsArquivados: [atualizado, ...store.leadsArquivados],
-          }
-        : {
-            leads: [atualizado, ...store.leads],
-            leadsArquivados: store.leadsArquivados.filter((item) => item.id !== leadId),
-          },
-    );
+  async restaurarLead(leadId: string) {
+    const { error } = await supabase.rpc("restaurar_lead_comercial", {
+      p_lead_id: leadId,
+    });
+    if (dbErro(error, "restaurar lead")) return false;
+    await refresh();
     return true;
   },
 
   async removerLead(leadId: string) {
-    const { error } = await supabase.from("leads").delete().eq("id", leadId);
-    if (dbErro(error, "remover lead")) return false;
-    setStore({
-      leads: store.leads.filter((l) => l.id !== leadId),
-      leadsArquivados: store.leadsArquivados.filter((l) => l.id !== leadId),
-    });
+    const { error } = await supabase.rpc("excluir_lead_comercial", { p_lead_id: leadId });
+    if (dbErro(error, "excluir lead")) return false;
+    await refresh();
     return true;
+  },
+
+  async fecharLead(leadId: string, criarProjeto: boolean) {
+    const { data, error } = await supabase.rpc("fechar_lead_comercial", {
+      p_lead_id: leadId,
+      p_criar_proposta: false,
+      p_criar_contrato: false,
+      p_criar_projeto: criarProjeto,
+      p_criar_cobranca: false,
+      p_promover_cliente: false,
+      p_agendar_onboarding: false,
+    });
+    if (dbErro(error, "fechar lead")) return null;
+    await refresh();
+    return data;
   },
 };
