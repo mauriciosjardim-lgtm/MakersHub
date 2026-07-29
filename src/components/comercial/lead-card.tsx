@@ -1,5 +1,5 @@
 import { useDraggable } from "@dnd-kit/core";
-import { Archive, ArchiveRestore, Flame, Snowflake, Thermometer } from "lucide-react";
+import { Archive, Flame, Snowflake, Thermometer } from "lucide-react";
 import { Danger, Calendar, Buildings2, DollarCircle, Profile } from "iconsax-react";
 import { formatDistanceToNow, isPast, isToday, format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -44,7 +44,7 @@ export function LeadCard({
 }: {
   lead: Lead;
   onOpen: (id: string) => void;
-  onArchive?: (id: string, arquivado: boolean) => void;
+  onArchive?: (lead: Lead) => void;
   dragDisabled?: boolean;
 }) {
   const empresa = getEmpresa(lead.empresaId);
@@ -85,19 +85,16 @@ export function LeadCard({
     >
       {onArchive && (
         <button
+          onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => {
             event.stopPropagation();
-            onArchive(lead.id, !lead.arquivado);
+            onArchive(lead);
           }}
           className="absolute right-7 top-1.5 z-10 inline-flex size-7 items-center justify-center rounded-lg border border-border/70 bg-background/95 text-muted-foreground opacity-70 shadow-sm transition sm:opacity-0 sm:group-hover/card:opacity-100 hover:border-primary/40 hover:bg-primary/10 hover:text-primary focus-visible:opacity-100"
-          title={lead.arquivado ? "Restaurar oportunidade" : "Arquivar oportunidade"}
-          aria-label={lead.arquivado ? "Restaurar oportunidade" : "Arquivar oportunidade"}
+          title="Arquivar oportunidade"
+          aria-label="Arquivar oportunidade"
         >
-          {lead.arquivado ? (
-            <ArchiveRestore className="size-3.5" />
-          ) : (
-            <Archive className="size-3.5" />
-          )}
+          <Archive className="size-3.5" />
         </button>
       )}
 

@@ -18,6 +18,7 @@ export interface Empresa {
   observacoes?: string;
   accentColor?: string;
   arquivado?: boolean;
+  status?: "prospect" | "cliente" | "inativo";
 }
 
 export interface Contato {
@@ -32,7 +33,8 @@ export interface Contato {
 
 export type TimelineTipo =
   | "criado" | "ligacao" | "reuniao" | "whatsapp" | "email"
-  | "proposta_enviada" | "observacao" | "etapa_mudou" | "fechado" | "perdido";
+  | "proposta_enviada" | "observacao" | "etapa_mudou" | "fechado" | "perdido"
+  | "arquivado" | "restaurado";
 
 export interface TimelineEvent {
   id: string;
@@ -70,6 +72,10 @@ export interface Lead {
   proximaAcao: ProximaAcao | null;
   observacoes?: string;
   criadoEm: string;
+  arquivadoEm?: string;
+  arquivadoPor?: string;
+  motivoArquivamento?: string;
+  etapaAntesArquivar?: EtapaJornada;
   // Relacionamentos mock
   propostasIds: string[];
   contratosIds: string[];

@@ -1,11 +1,21 @@
 import { useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { DateTimePicker } from "@/components/ui/date-time-picker";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Phone,
   MapPin,
@@ -85,6 +95,7 @@ const PROGRESSO: EtapaJornada[] = [
 ];
 
 function DrawerBody({ lead, onClose: _onClose }: { lead: Lead; onClose: () => void }) {
+  const navigate = useNavigate();
   const etapas = useEtapasComercial();
   const empresa = getEmpresa(lead.empresaId);
   const contato = getContato(lead.contatoId);
@@ -98,6 +109,7 @@ function DrawerBody({ lead, onClose: _onClose }: { lead: Lead; onClose: () => vo
   const { score, estrelas, rotulo } = leadScore(lead);
 
   const [fechando, setFechando] = useState(false);
+  const [novoContatoAberto, setNovoContatoAberto] = useState(false);
   const [novaTarefa, setNovaTarefa] = useState("");
   const [novaObs, setNovaObs] = useState("");
   const [proxAcaoTitulo, setProxAcaoTitulo] = useState(lead.proximaAcao?.titulo ?? "");
@@ -136,33 +148,47 @@ function DrawerBody({ lead, onClose: _onClose }: { lead: Lead; onClose: () => vo
         {/* Progressão de etapa */}
         <ProgressoEtapas atual={lead.etapa} />
 
-        <TempPicker lead={lead} />
+        {lead.arquivadoEm ? (
+          <div className="mt-3 rounded-lg border border-border bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+            Lead arquivado
+            {lead.motivoArquivamento ? ` · ${lead.motivoArquivamento}` : ""}. Restaure-o na seção
+            Arquivados para voltar a movimentá-lo.
+          </div>
+        ) : (
+          <TempPicker lead={lead} />
+        )}
       </SheetHeader>
 
       {/* Ações rápidas */}
-      <div className="flex flex-wrap gap-2 border-b border-border bg-surface-1/30 px-6 py-3">
-        <QuickBtn icon={Phone} label="Ligação" soon onClick={() => {}} />
-        <QuickBtn icon={FileText} label="Proposta" soon onClick={() => {}} />
-        <QuickBtn icon={CalendarIcon} label="Reunião" soon onClick={() => {}} />
-        <div className="ml-auto flex gap-2">
-          <QuickBtn
-            icon={XCircle}
-            label="Perdido"
-            tone="destructive"
-            onClick={() => {
-              comercial.moverEtapa(lead.id, "perdido");
-              comercial.addEvento(lead.id, { tipo: "perdido", titulo: "Marcado como perdido" });
-              toast("Lead movido para Perdido.");
-            }}
-          />
-          <QuickBtn
-            icon={CheckCircle2}
-            label="Marcar como fechado"
-            tone="success"
-            onClick={() => setFechando(true)}
-          />
+      {!lead.arquivadoEm && (
+        <div className="flex flex-wrap gap-2 border-b border-border bg-surface-1/30 px-6 py-3">
+          <QuickBtn icon={Phone} label="Ligação" soon onClick={() => {}} />
+          <QuickBtn icon={FileText} label="Proposta" soon onClick={() => {}} />
+          <QuickBtn icon={CalendarIcon} label="Reunião" soon onClick={() => {}} />
+          <div className="ml-auto flex gap-2">
+            {lead.etapa !== "fechado" && lead.etapa !== "perdido" && (
+              <>
+                <QuickBtn
+                  icon={XCircle}
+                  label="Perdido"
+                  tone="destructive"
+                  onClick={async () => {
+                    const movido = await comercial.moverEtapa(lead.id, "perdido");
+                    if (!movido) return;
+                    toast("Lead movido para Perdido.");
+                  }}
+                />
+                <QuickBtn
+                  icon={CheckCircle2}
+                  label="Marcar como fechado"
+                  tone="success"
+                  onClick={() => setFechando(true)}
+                />
+              </>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Tabs — central de tudo */}
       <Tabs defaultValue="informacoes" className="px-6 py-5">
@@ -195,103 +221,113 @@ function DrawerBody({ lead, onClose: _onClose }: { lead: Lead; onClose: () => vo
 
         {/* ============ INFORMAÇÕES ============ */}
         <TabsContent value="informacoes" className="space-y-5">
-          <Bloco titulo="Próxima ação" icon={ArrowUpRight}>
-            <div className="space-y-2">
-              <Input
-                placeholder="O que precisa ser feito?"
-                value={proxAcaoTitulo}
-                onChange={(e) => setProxAcaoTitulo(e.target.value)}
-              />
-              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-                <DateTimePicker
-                  value={proxAcaoData}
-                  onChange={setProxAcaoData}
-                  placeholder="Quando acontece?"
+          {!lead.arquivado && lead.etapa !== "fechado" && lead.etapa !== "perdido" && (
+            <Bloco titulo="Próxima ação" icon={ArrowUpRight}>
+              <div className="space-y-2">
+                <Input
+                  placeholder="O que precisa ser feito?"
+                  value={proxAcaoTitulo}
+                  onChange={(e) => setProxAcaoTitulo(e.target.value)}
                 />
-                <Button
-                  className="h-10"
-                  onClick={() => {
-                    if (!proxAcaoTitulo || !proxAcaoData) {
-                      toast.error("Informe ação e data.");
-                      return;
-                    }
-                    comercial.setProximaAcao(lead.id, {
-                      titulo: proxAcaoTitulo,
-                      data: new Date(proxAcaoData).toISOString(),
-                    });
-                    toast.success("Próxima ação definida.");
-                  }}
-                >
-                  Salvar
-                </Button>
+                <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                  <DateTimePicker
+                    value={proxAcaoData}
+                    onChange={setProxAcaoData}
+                    placeholder="Quando acontece?"
+                  />
+                  <Button
+                    className="h-10"
+                    onClick={async () => {
+                      if (!proxAcaoTitulo || !proxAcaoData) {
+                        toast.error("Informe ação e data.");
+                        return;
+                      }
+                      const ok = await comercial.setProximaAcao(lead.id, {
+                        titulo: proxAcaoTitulo,
+                        data: new Date(proxAcaoData).toISOString(),
+                      });
+                      if (ok) toast.success("Próxima ação definida.");
+                    }}
+                  >
+                    Salvar
+                  </Button>
+                </div>
+                {!lead.proximaAcao && (
+                  <p className="rounded-md bg-destructive/10 px-2.5 py-1.5 text-[11px] text-destructive">
+                    Esse lead está sem próxima ação. Defina uma para não perder o ritmo.
+                  </p>
+                )}
               </div>
-              {!lead.proximaAcao && (
-                <p className="rounded-md bg-destructive/10 px-2.5 py-1.5 text-[11px] text-destructive">
-                  Esse lead está sem próxima ação. Defina uma para não perder o ritmo.
-                </p>
-              )}
-            </div>
-          </Bloco>
+            </Bloco>
+          )}
 
           <Bloco titulo="Detalhes do lead" icon={Info}>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <CampoEdit
                 label="Valor (R$)"
                 format="currency"
                 defaultValue={String(lead.valor)}
-                onSave={(v) => {
+                onSave={async (v) => {
                   const n = Number(v);
-                  if (!Number.isFinite(n)) return;
-                  comercial.updateLead(lead.id, { valor: n });
-                  toast.success("Valor atualizado.");
+                  if (!Number.isFinite(n)) return false;
+                  const ok = await comercial.updateLead(lead.id, { valor: n });
+                  if (ok) toast.success("Valor atualizado.");
+                  return ok;
                 }}
               />
               <CampoEdit
                 label="Responsável"
                 defaultValue={lead.responsavel}
-                onSave={(v) => {
-                  comercial.updateLead(lead.id, { responsavel: v });
-                  toast.success("Responsável atualizado.");
+                onSave={async (v) => {
+                  const ok = await comercial.updateLead(lead.id, { responsavel: v });
+                  if (ok) toast.success("Responsável atualizado.");
+                  return ok;
                 }}
               />
               <CampoEdit
                 label="Origem"
                 defaultValue={lead.origem}
-                onSave={(v) => {
-                  comercial.updateLead(lead.id, { origem: v });
-                  toast.success("Origem atualizada.");
+                onSave={async (v) => {
+                  const ok = await comercial.updateLead(lead.id, { origem: v });
+                  if (ok) toast.success("Origem atualizada.");
+                  return ok;
                 }}
-                className="col-span-2"
+                className="sm:col-span-2"
               />
             </div>
           </Bloco>
 
           <Bloco titulo="Empresa" icon={Building2}>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <CampoEdit
                 label="Nome"
                 defaultValue={empresa?.nome ?? ""}
-                onSave={(v) => {
+                onSave={async (v) => {
                   if (!empresa) return;
-                  comercial.updateEmpresa(empresa.id, { nome: v });
-                  toast.success("Empresa atualizada.");
+                  const ok = await comercial.updateEmpresa(empresa.id, { nome: v });
+                  if (ok) toast.success("Empresa atualizada.");
+                  return ok;
                 }}
-                className="col-span-2"
+                className="sm:col-span-2"
               />
               <CampoEdit
                 label="Cidade"
                 defaultValue={empresa?.cidade ?? ""}
-                onSave={(v) => {
-                  if (empresa) void comercial.updateEmpresa(empresa.id, { cidade: v });
-                  toast.success("Cidade atualizada.");
+                onSave={async (v) => {
+                  if (!empresa) return false;
+                  const ok = await comercial.updateEmpresa(empresa.id, { cidade: v });
+                  if (ok) toast.success("Cidade atualizada.");
+                  return ok;
                 }}
               />
               <CampoEdit
                 label="Segmento"
                 defaultValue={empresa?.segmento ?? ""}
-                onSave={(v) => {
-                  if (empresa) void comercial.updateEmpresa(empresa.id, { segmento: v });
-                  toast.success("Segmento atualizado.");
+                onSave={async (v) => {
+                  if (!empresa) return false;
+                  const ok = await comercial.updateEmpresa(empresa.id, { segmento: v });
+                  if (ok) toast.success("Segmento atualizado.");
+                  return ok;
                 }}
               />
               <CampoEdit
@@ -326,15 +362,7 @@ function DrawerBody({ lead, onClose: _onClose }: { lead: Lead; onClose: () => vo
                     size="sm"
                     variant="outline"
                     className="w-full gap-1.5"
-                    onClick={() => {
-                      comercial.addContato(empresa.id, {
-                        nome: "Novo contato",
-                        cargo: "—",
-                        email: "—",
-                        telefone: "—",
-                      });
-                      toast.success("Contato adicionado.");
-                    }}
+                    onClick={() => setNovoContatoAberto(true)}
                   >
                     <Add size={14} color="currentColor" variant="Linear" className="text-primary" />{" "}
                     Adicionar contato
@@ -349,10 +377,10 @@ function DrawerBody({ lead, onClose: _onClose }: { lead: Lead; onClose: () => vo
               id="drawer-obs-input"
               placeholder="Anote contexto, preferências, decisores..."
               defaultValue={lead.observacoes ?? ""}
-              onBlur={(e) => {
+              onBlur={async (e) => {
                 if (e.target.value !== (lead.observacoes ?? "")) {
-                  comercial.setObservacoes(lead.id, e.target.value);
-                  toast.success("Observação salva.");
+                  const ok = await comercial.setObservacoes(lead.id, e.target.value);
+                  if (ok) toast.success("Observação salva.");
                 }
               }}
               rows={4}
@@ -362,15 +390,17 @@ function DrawerBody({ lead, onClose: _onClose }: { lead: Lead; onClose: () => vo
                 placeholder="Adicionar nota rápida à timeline..."
                 value={novaObs}
                 onChange={(e) => setNovaObs(e.target.value)}
-                onKeyDown={(e) => {
+                onKeyDown={async (e) => {
                   if (e.key === "Enter" && novaObs) {
-                    comercial.addEvento(lead.id, {
+                    const ok = await comercial.addEvento(lead.id, {
                       tipo: "observacao",
                       titulo: "Observação",
                       descricao: novaObs,
                     });
-                    setNovaObs("");
-                    toast.success("Nota adicionada.");
+                    if (ok) {
+                      setNovaObs("");
+                      toast.success("Nota adicionada.");
+                    }
                   }
                 }}
               />
@@ -392,15 +422,7 @@ function DrawerBody({ lead, onClose: _onClose }: { lead: Lead; onClose: () => vo
                 size="sm"
                 variant="outline"
                 className="gap-1.5"
-                onClick={() => {
-                  comercial.addContato(empresa.id, {
-                    nome: "Novo contato",
-                    cargo: "—",
-                    email: "—",
-                    telefone: "—",
-                  });
-                  toast.success("Contato adicionado.");
-                }}
+                onClick={() => setNovoContatoAberto(true)}
               >
                 <Add size={14} color="currentColor" variant="Linear" className="text-primary" />{" "}
                 Adicionar
@@ -424,14 +446,15 @@ function DrawerBody({ lead, onClose: _onClose }: { lead: Lead; onClose: () => vo
                     </div>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <CampoEdit
                     label="Nome"
                     defaultValue={contato.nome}
-                    className="col-span-2"
-                    onSave={(v) => {
-                      comercial.updateContato(contato.id, { nome: v });
-                      toast.success("Contato atualizado.");
+                    className="sm:col-span-2"
+                    onSave={async (v) => {
+                      const ok = await comercial.updateContato(contato.id, { nome: v });
+                      if (ok) toast.success("Contato atualizado.");
+                      return ok;
                     }}
                   />
                   <CampoEdit
@@ -449,7 +472,7 @@ function DrawerBody({ lead, onClose: _onClose }: { lead: Lead; onClose: () => vo
                     label="E-mail"
                     format="email"
                     defaultValue={contato.email}
-                    className="col-span-2"
+                    className="sm:col-span-2"
                     onSave={(v) => comercial.updateContato(contato.id, { email: v })}
                   />
                 </div>
@@ -495,14 +518,15 @@ function DrawerBody({ lead, onClose: _onClose }: { lead: Lead; onClose: () => vo
                     <p className="text-[11px] text-muted-foreground">{c.cargo}</p>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                   <CampoEdit
                     label="Nome"
                     defaultValue={c.nome}
-                    className="col-span-2"
-                    onSave={(v) => {
-                      comercial.updateContato(c.id, { nome: v });
-                      toast.success("Contato atualizado.");
+                    className="sm:col-span-2"
+                    onSave={async (v) => {
+                      const ok = await comercial.updateContato(c.id, { nome: v });
+                      if (ok) toast.success("Contato atualizado.");
+                      return ok;
                     }}
                   />
                   <CampoEdit
@@ -520,7 +544,7 @@ function DrawerBody({ lead, onClose: _onClose }: { lead: Lead; onClose: () => vo
                     label="E-mail"
                     format="email"
                     defaultValue={c.email}
-                    className="col-span-2"
+                    className="sm:col-span-2"
                     onSave={(v) => comercial.updateContato(c.id, { email: v })}
                   />
                 </div>
@@ -576,25 +600,30 @@ function DrawerBody({ lead, onClose: _onClose }: { lead: Lead; onClose: () => vo
               placeholder="Nova atividade..."
               value={novaTarefa}
               onChange={(e) => setNovaTarefa(e.target.value)}
-              onKeyDown={(e) => {
+              onKeyDown={async (e) => {
                 if (e.key === "Enter" && novaTarefa) {
                   const prazo = new Date();
                   prazo.setDate(prazo.getDate() + 1);
-                  comercial.addTarefa(lead.id, novaTarefa, prazo.toISOString());
-                  setNovaTarefa("");
-                  toast.success("Atividade criada.");
+                  const ok = await comercial.addTarefa(lead.id, novaTarefa, prazo.toISOString());
+                  if (ok) {
+                    setNovaTarefa("");
+                    toast.success("Atividade criada.");
+                  }
                 }
               }}
             />
             <Button
               size="icon"
               variant="outline"
-              onClick={() => {
+              onClick={async () => {
                 if (!novaTarefa) return;
                 const prazo = new Date();
                 prazo.setDate(prazo.getDate() + 1);
-                comercial.addTarefa(lead.id, novaTarefa, prazo.toISOString());
-                setNovaTarefa("");
+                const ok = await comercial.addTarefa(lead.id, novaTarefa, prazo.toISOString());
+                if (ok) {
+                  setNovaTarefa("");
+                  toast.success("Atividade criada.");
+                }
               }}
             >
               <Add size={16} color="currentColor" variant="Linear" className="text-primary" />
@@ -638,15 +667,8 @@ function DrawerBody({ lead, onClose: _onClose }: { lead: Lead; onClose: () => vo
             descricao="Documentos comerciais enviados para esse lead."
             icone={FileText}
             qtd={lead.propostasIds.length}
-            acao="Gerar nova proposta"
-            onAcao={() => {
-              comercial.addEvento(lead.id, {
-                tipo: "proposta_enviada",
-                titulo: "Proposta gerada",
-                descricao: fmtBRL(lead.valor),
-              });
-              toast.success("Proposta registrada na timeline.");
-            }}
+            acao="Abrir propostas"
+            onAcao={() => navigate({ to: "/propostas" })}
           />
         </TabsContent>
         <TabsContent value="contratos">
@@ -655,8 +677,8 @@ function DrawerBody({ lead, onClose: _onClose }: { lead: Lead; onClose: () => vo
             descricao="Contratos prontos para assinatura digital."
             icone={FileSignature}
             qtd={lead.contratosIds.length}
-            acao="Criar contrato"
-            onAcao={() => toast("Contrato será criado ao fechar o lead.")}
+            acao="Abrir contratos"
+            onAcao={() => navigate({ to: "/contratos" })}
           />
         </TabsContent>
         <TabsContent value="projetos">
@@ -665,8 +687,8 @@ function DrawerBody({ lead, onClose: _onClose }: { lead: Lead; onClose: () => vo
             descricao="Projetos de operação abertos a partir desse lead."
             icone={FolderKanban}
             qtd={lead.projetosIds.length}
-            acao="Abrir projeto"
-            onAcao={() => toast("Projeto será aberto ao fechar o lead.")}
+            acao="Abrir projetos"
+            onAcao={() => navigate({ to: "/projetos" })}
           />
         </TabsContent>
         <TabsContent value="financeiro">
@@ -675,13 +697,20 @@ function DrawerBody({ lead, onClose: _onClose }: { lead: Lead; onClose: () => vo
             descricao="Cobranças, recebimentos e lançamentos vinculados."
             icone={DollarSign}
             qtd={lead.lancamentosIds.length}
-            acao="Criar cobrança"
-            onAcao={() => toast("Cobrança será gerada ao fechar o lead.")}
+            acao="Abrir financeiro"
+            onAcao={() => navigate({ to: "/financeiro" })}
           />
         </TabsContent>
       </Tabs>
 
       <FecharModal lead={lead} open={fechando} onOpenChange={setFechando} />
+      {empresa && (
+        <NovoContatoDialog
+          empresaId={empresa.id}
+          open={novoContatoAberto}
+          onOpenChange={setNovoContatoAberto}
+        />
+      )}
     </>
   );
 }
@@ -977,7 +1006,7 @@ function CampoEdit({
 }: {
   label: string;
   defaultValue: string;
-  onSave: (v: string) => void;
+  onSave: (v: string) => void | boolean | Promise<void | boolean>;
   type?: string;
   format?: "text" | "currency" | "phone" | "email";
   className?: string;
@@ -991,11 +1020,19 @@ function CampoEdit({
         ? maskPhone(defaultValue)
         : defaultValue;
   const [val, setVal] = useState(inicial);
+  const [salvando, setSalvando] = useState(false);
 
-  const commit = () => {
+  const salvar = async (valor: string) => {
+    setSalvando(true);
+    const ok = await onSave(valor);
+    setSalvando(false);
+    if (ok === false) setVal(inicial);
+  };
+
+  const commit = async () => {
     if (format === "currency") {
       const n = maskCurrency(val).value;
-      if (String(n) !== defaultValue) onSave(String(n));
+      if (String(n) !== defaultValue) await salvar(String(n));
     } else if (format === "email") {
       const t = val.trim();
       if (t === defaultValue) return;
@@ -1004,9 +1041,9 @@ function CampoEdit({
         setVal(defaultValue);
         return;
       }
-      onSave(t);
+      await salvar(t);
     } else if (val !== defaultValue) {
-      onSave(val);
+      await salvar(val);
     }
   };
 
@@ -1026,6 +1063,7 @@ function CampoEdit({
           else setVal(raw);
         }}
         onBlur={commit}
+        disabled={salvando}
         className="h-9 text-xs"
       />
     </label>
@@ -1051,14 +1089,15 @@ function ContatoEditavel({
           </span>
         )}
       </div>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <CampoEdit
           label="Nome"
           defaultValue={contato.nome}
-          className="col-span-2"
-          onSave={(v) => {
-            comercial.updateContato(contato.id, { nome: v });
-            toast.success("Contato atualizado.");
+          className="sm:col-span-2"
+          onSave={async (v) => {
+            const ok = await comercial.updateContato(contato.id, { nome: v });
+            if (ok) toast.success("Contato atualizado.");
+            return ok;
           }}
         />
         <CampoEdit
@@ -1080,13 +1119,98 @@ function ContatoEditavel({
           label="E-mail"
           format="email"
           defaultValue={contato.email}
-          className="col-span-2"
+          className="sm:col-span-2"
           onSave={(v) => {
             comercial.updateContato(contato.id, { email: v });
           }}
         />
       </div>
     </li>
+  );
+}
+
+function NovoContatoDialog({
+  empresaId,
+  open,
+  onOpenChange,
+}: {
+  empresaId: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [nome, setNome] = useState("");
+  const [cargo, setCargo] = useState("");
+  const [email, setEmail] = useState("");
+  const [telefone, setTelefone] = useState("");
+  const [salvando, setSalvando] = useState(false);
+
+  const reset = () => {
+    setNome("");
+    setCargo("");
+    setEmail("");
+    setTelefone("");
+  };
+
+  const salvar = async () => {
+    if (!nome.trim()) {
+      toast.error("Informe o nome do contato.");
+      return;
+    }
+    if (email.trim() && !isValidEmail(email)) {
+      toast.error("E-mail inválido.");
+      return;
+    }
+    setSalvando(true);
+    const id = await comercial.addContato(empresaId, {
+      nome: nome.trim(),
+      cargo: cargo.trim() || "—",
+      email: email.trim() || "—",
+      telefone: telefone.trim() || "—",
+      principal: false,
+    });
+    setSalvando(false);
+    if (!id) return;
+    toast.success("Contato adicionado.");
+    reset();
+    onOpenChange(false);
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next && !salvando) reset();
+        if (!salvando) onOpenChange(next);
+      }}
+    >
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Adicionar contato</DialogTitle>
+          <DialogDescription>
+            Cadastre os dados reais da pessoa vinculada a esta empresa.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-3">
+          <Input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome *" />
+          <Input value={cargo} onChange={(e) => setCargo(e.target.value)} placeholder="Cargo" />
+          <Input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="E-mail"
+          />
+          <PhoneInput value={telefone} onValueChange={setTelefone} />
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" disabled={salvando} onClick={() => onOpenChange(false)}>
+            Cancelar
+          </Button>
+          <Button disabled={salvando} onClick={salvar}>
+            {salvando ? "Salvando…" : "Adicionar contato"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
