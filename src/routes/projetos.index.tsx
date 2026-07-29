@@ -12,7 +12,7 @@ import {
   SearchNormal,
   TickCircle,
 } from "iconsax-react";
-import { Archive, ArchiveRestore, GripVertical } from "lucide-react";
+import { Archive, ArchiveRestore, GripVertical, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -34,6 +34,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -53,7 +54,7 @@ import {
   type Projeto,
   type Tarefa,
 } from "@/lib/mock/projetos";
-import { useProjetos } from "@/lib/hooks/useProjetos";
+import { projetosActions, useProjetos } from "@/lib/hooks/useProjetos";
 import { comercial, useComercialSupa, type Empresa } from "@/lib/hooks/useComercial";
 import { calcularResumoProgresso, SAUDE_ESTILO } from "@/lib/projetos/progresso";
 import {
@@ -63,9 +64,9 @@ import {
   tokenFaseNoFluxo,
 } from "@/lib/projetos/pipeline";
 import {
+  agruparProjetosPorCliente,
   findProjectClient,
   normalizeClientName,
-  projectBelongsToClient,
 } from "@/lib/projetos/cliente";
 import { consumeCreate } from "@/lib/pendingCreate";
 import { cn } from "@/lib/utils";
@@ -130,6 +131,8 @@ function ProjetosPage() {
   const [mostrarFechados, setMostrarFechados] = useState(false);
   const [mostrarClientesArquivados, setMostrarClientesArquivados] = useState(false);
   const [clienteParaArquivar, setClienteParaArquivar] = useState<Empresa | null>(null);
+  const [projetoSemCadastroParaExcluir, setProjetoSemCadastroParaExcluir] =
+    useState<Projeto | null>(null);
 
   useEffect(() => {
     if (consumeCreate("projeto")) {
@@ -143,21 +146,18 @@ function ProjetosPage() {
     return () => window.removeEventListener("nervon:criar", abrir);
   }, []);
 
-  const clientes = useMemo(() => {
-    const nomes = new Map<string, string>();
-
-    projetos
-      .filter((project) => Boolean(project.arquivado) === mostrarFechados)
-      .forEach((project) => {
-        const nome = project.cliente.trim();
-        const cadastro = findProjectClient(project, projectClients);
-        if (nome && Boolean(cadastro?.arquivado) === mostrarClientesArquivados) {
-          nomes.set(normalizarNome(nome), nome);
-        }
-      });
-
-    return [...nomes.values()].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  const gruposClientes = useMemo(() => {
+    const projetosDaSecao = projetos.filter((project) => {
+      const cadastro = findProjectClient(project, projectClients);
+      return Boolean(cadastro?.arquivado) === mostrarClientesArquivados;
+    });
+    return agruparProjetosPorCliente(projetosDaSecao, mostrarFechados);
   }, [projectClients, projetos, mostrarFechados, mostrarClientesArquivados]);
+  const clientes = useMemo(() => gruposClientes.map((grupo) => grupo.nome), [gruposClientes]);
+  const gruposClientesPorNome = useMemo(
+    () => new Map(gruposClientes.map((grupo) => [grupo.chave, grupo])),
+    [gruposClientes],
+  );
   const clientesOrdenados = useMemo(() => {
     const presentes = new Set(clientes);
     const salvos = ordemClientes.filter((c) => presentes.has(c));
@@ -370,25 +370,17 @@ function ProjetosPage() {
             </div>
             <div className="flex gap-2 overflow-x-auto px-0.5 py-1.5">
               {clientesOrdenados.map((nome) => {
-                const clientRecord = projectClients.find(
-                  (item) => item.nome.toLowerCase() === nome.toLowerCase(),
-                );
-                const ps = projetos.filter(
-                  (project) =>
-                    !project.arquivado &&
-                    (clientRecord
-                      ? projectBelongsToClient(project, clientRecord)
-                      : !project.clienteId &&
-                        normalizarNome(project.cliente) === normalizarNome(nome)),
-                );
+                const grupo = gruposClientesPorNome.get(normalizarNome(nome));
+                const ps = grupo?.projetos ?? [];
+                const destino = ps.find(isProjetoAtivo) ?? ps[0];
+                if (!destino) return null;
+                const clientRecord = findProjectClient(destino, projectClients);
                 const pendentes = tarefas.filter(
                   (t) => ps.some((p) => p.id === t.projetoId) && !t.concluida,
                 ).length;
                 const cor = coresClientes.get(normalizarNome(nome)) ?? corCliente(nome);
-                const destino = ps.find(isProjetoAtivo) ?? ps[0];
                 const abrirCliente = () => {
-                  const workspaceId = clientRecord?.id ?? destino?.id;
-                  if (workspaceId) navigate({ to: "/projetos/$id", params: { id: workspaceId } });
+                  navigate({ to: "/projetos/$id", params: { id: destino.id } });
                 };
                 return (
                   <div
@@ -441,6 +433,20 @@ function ProjetosPage() {
                         )}
                       </button>
                     )}
+                    {!clientRecord && ps.length === 1 && (
+                      <button
+                        type="button"
+                        className="absolute right-2.5 top-2.5 z-10 grid size-6 place-items-center rounded-md text-muted-foreground/55 transition hover:bg-destructive/10 hover:text-destructive"
+                        aria-label={`Excluir projeto ${destino.nome}`}
+                        title="Excluir projeto sem cadastro"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setProjetoSemCadastroParaExcluir(destino);
+                        }}
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    )}
                     <button
                       type="button"
                       draggable
@@ -464,9 +470,13 @@ function ProjetosPage() {
                       <div className="min-w-0 pr-12">
                         <p className="truncate text-sm font-semibold">{nome}</p>
                         <p className="text-[11px] text-muted-foreground">
-                          {ps.length} projeto{ps.length === 1 ? "" : "s"} ativo
+                          {ps.length} projeto{ps.length === 1 ? "" : "s"}{" "}
+                          {mostrarFechados ? "fechado" : "ativo"}
                           {ps.length === 1 ? "" : "s"}
                         </p>
+                        {!clientRecord && (
+                          <p className="mt-0.5 text-[9px] text-amber-400">Sem cadastro vinculado</p>
+                        )}
                       </div>
                     </div>
                     <div className="pointer-events-none relative z-[1] mt-3.5 flex justify-between border-t border-border/40 pt-2.5 text-[11px] text-muted-foreground">
@@ -652,7 +662,75 @@ function ProjetosPage() {
         cliente={clienteParaArquivar}
         onClose={() => setClienteParaArquivar(null)}
       />
+      <ExcluirProjetoSemCadastroDialog
+        projeto={projetoSemCadastroParaExcluir}
+        onClose={() => setProjetoSemCadastroParaExcluir(null)}
+      />
     </div>
+  );
+}
+
+function ExcluirProjetoSemCadastroDialog({
+  projeto,
+  onClose,
+}: {
+  projeto: Projeto | null;
+  onClose: () => void;
+}) {
+  const [confirmacao, setConfirmacao] = useState("");
+  const [excluindo, setExcluindo] = useState(false);
+  const fechar = () => {
+    if (excluindo) return;
+    setConfirmacao("");
+    onClose();
+  };
+  const confirmar = async () => {
+    if (!projeto || confirmacao.trim() !== "EXCLUIR") return;
+    setExcluindo(true);
+    const removido = await projetosActions.removerProjeto(projeto.id);
+    setExcluindo(false);
+    if (!removido) return;
+    toast.success(`${projeto.nome} foi excluído`);
+    setConfirmacao("");
+    onClose();
+  };
+
+  return (
+    <Dialog open={Boolean(projeto)} onOpenChange={(open) => !open && fechar()}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="font-display">Excluir projeto sem cadastro</DialogTitle>
+          <DialogDescription>
+            O projeto <strong className="text-foreground">{projeto?.nome}</strong> ficou
+            independente do CRM. A exclusão também remove suas tarefas, marcos e entregáveis.
+          </DialogDescription>
+        </DialogHeader>
+        <label className="space-y-1.5">
+          <span className="text-[11px] text-muted-foreground">
+            Digite <strong className="text-foreground">EXCLUIR</strong> para confirmar.
+          </span>
+          <Input
+            value={confirmacao}
+            onChange={(event) => setConfirmacao(event.target.value)}
+            placeholder="EXCLUIR"
+            autoFocus
+          />
+        </label>
+        <DialogFooter>
+          <Button variant="outline" onClick={fechar} disabled={excluindo}>
+            Cancelar
+          </Button>
+          <Button
+            variant="destructive"
+            onClick={() => void confirmar()}
+            disabled={excluindo || confirmacao.trim() !== "EXCLUIR"}
+          >
+            <Trash2 className="size-4" />
+            {excluindo ? "Excluindo…" : "Excluir projeto"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
