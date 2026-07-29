@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
   CheckCircle2,
@@ -1321,6 +1321,8 @@ function ApprovalCard({
   const [previewSlow, setPreviewSlow] = useState(false);
   const [previewRequested, setPreviewRequested] = useState(priority);
   const [thumbnailFailed, setThumbnailFailed] = useState(false);
+  const playerShellRef = useRef<HTMLDivElement>(null);
+  const previewFrameRef = useRef<HTMLIFrameElement>(null);
   const thumbnail = driveThumbnailUrl(item.drive_file_id);
   const poster = thumbnailFailed ? cover : thumbnail || cover;
   const embedUrl = item.embed_url || (item.url ? getReviewEmbedUrl(item.url) : null);
@@ -1337,6 +1339,28 @@ function ApprovalCard({
     const timeout = window.setTimeout(() => setPreviewSlow(true), 8_000);
     return () => window.clearTimeout(timeout);
   }, [embedUrl, previewReady, previewRequested]);
+
+  useEffect(() => {
+    if (!embedUrl || !previewRequested || !window.matchMedia("(max-width: 639px)").matches) return;
+
+    let releaseTimer: number | null = null;
+    const releaseFrameFocus = () => {
+      window.setTimeout(() => {
+        if (document.activeElement !== previewFrameRef.current || releaseTimer !== null) return;
+        releaseTimer = window.setTimeout(() => {
+          previewFrameRef.current?.blur();
+          playerShellRef.current?.focus({ preventScroll: true });
+          releaseTimer = null;
+        }, 3_000);
+      });
+    };
+    window.addEventListener("blur", releaseFrameFocus);
+
+    return () => {
+      window.removeEventListener("blur", releaseFrameFocus);
+      if (releaseTimer !== null) window.clearTimeout(releaseTimer);
+    };
+  }, [embedUrl, previewRequested]);
 
   const requestChanges = async () => {
     const validPoints = adjustmentPoints.filter((point) => point.change.trim());
@@ -1390,7 +1414,11 @@ function ApprovalCard({
       className="group grid overflow-hidden rounded-3xl border border-white/[0.09] bg-white/[0.025] transition hover:border-[var(--portal-accent)]/25 lg:grid-cols-[minmax(360px,.95fr)_minmax(0,1.05fr)]"
       aria-busy={approving}
     >
-      <div className="relative aspect-[4/3] w-full overflow-hidden bg-black sm:aspect-video lg:self-start">
+      <div
+        ref={playerShellRef}
+        tabIndex={-1}
+        className="relative aspect-video w-full overflow-hidden bg-black outline-none lg:self-start"
+      >
         {poster ? (
           <img
             src={poster}
@@ -1406,6 +1434,7 @@ function ApprovalCard({
         )}
         {embedUrl && previewRequested ? (
           <iframe
+            ref={previewFrameRef}
             src={embedUrl}
             title={`${item.title} ${item.version_label || ""}`}
             className={cn(
