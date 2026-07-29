@@ -24,11 +24,12 @@ import { MembrosSelect } from "@/components/projetos/membros-select";
 import { Trash } from "iconsax-react";
 import { useAuth } from "@/lib/auth";
 import { useProjetos } from "@/lib/hooks/useProjetos";
+import { toast } from "sonner";
 
 const toDate = (iso?: string | null) => iso?.slice(0, 10) ?? "";
 const fromDate = (s: string) => {
-  const d = new Date(s);
-  d.setHours(10, 0, 0, 0);
+  const [ano, mes, dia] = s.split("-").map(Number);
+  const d = new Date(ano, mes - 1, dia, 12, 0, 0, 0);
   return d.toISOString();
 };
 
@@ -64,6 +65,8 @@ export function ProjetoModal({
   const coresEmUso = projetos.filter(
     (p) => p.id !== projeto?.id && resolverCorProjeto(p.cor, p.id) === cor,
   );
+  const periodoInvalido =
+    modoData === "periodo" && !!dataInicio && !!dataEntrega && dataEntrega < dataInicio;
 
   useEffect(() => {
     if (!open) return;
@@ -95,6 +98,10 @@ export function ProjetoModal({
 
   const salvar = async () => {
     if (!nome.trim() || !cliente.trim()) return;
+    if (periodoInvalido) {
+      toast.error("A entrega prevista não pode ser anterior ao início do projeto.");
+      return;
+    }
     setSalvando(true);
     try {
       // Vínculo com o cadastro de cliente acontece nos bastidores — o usuário
@@ -271,8 +278,15 @@ export function ProjetoModal({
                 <Input
                   type="date"
                   value={dataEntrega}
+                  min={modoData === "periodo" ? dataInicio : undefined}
+                  aria-invalid={periodoInvalido}
                   onChange={(e) => setDataEntrega(e.target.value)}
                 />
+                {periodoInvalido && (
+                  <p className="text-[10px] text-destructive">
+                    A entrega deve ser igual ou posterior ao início.
+                  </p>
+                )}
               </div>
             </div>
           )}
@@ -317,7 +331,7 @@ export function ProjetoModal({
             </Button>
             <Button
               onClick={salvar}
-              disabled={salvando || removendo || !nome.trim() || !cliente.trim()}
+              disabled={salvando || removendo || periodoInvalido || !nome.trim() || !cliente.trim()}
             >
               {salvando ? "Salvando…" : editando ? "Salvar" : "Criar projeto"}
             </Button>
