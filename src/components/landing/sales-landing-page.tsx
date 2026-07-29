@@ -25,9 +25,10 @@ const CHECKOUT_URL = "/checkout";
 
 const PLAYER_ORIGIN = "https://player.mediadelivery.net";
 
-const VSL_URL =
+// Trocar o src recarrega o player, e é assim que a demo recomeça do 00:00.
+const vslUrl = (mudo: boolean) =>
   `${PLAYER_ORIGIN}/embed/716343/7944589d-9b6e-4aa0-a45c-41e058c66904` +
-  "?autoplay=true&loop=false&muted=true&preload=true&responsive=true";
+  `?autoplay=true&loop=false&muted=${mudo}&preload=true&responsive=true`;
 
 const pains = [
   "O lead chega no WhatsApp e some porque ninguém fez o follow-up.",
@@ -218,11 +219,9 @@ function Header() {
 function VslPlayer() {
   const [mounted, setMounted] = useState(false);
   const [loaded, setLoaded] = useState(false);
-  const [interagiu, setInteragiu] = useState(false);
+  const [comSom, setComSom] = useState(false);
+  const [escudoFora, setEscudoFora] = useState(false);
   const frameRef = useRef<HTMLIFrameElement>(null);
-  const jaAtivouRef = useRef(false);
-  const playerProntoRef = useRef(false);
-  const pendenteRef = useRef(false);
 
   // O iframe só entra depois da hidratação. Se viesse pronto no HTML do
   // servidor, o navegador carregaria o player antes do React pendurar o
@@ -236,62 +235,45 @@ function VslPlayer() {
     );
   }, []);
 
-  // Tira o mudo e recomeça a demo do zero, para o visitante não pegar o vídeo
-  // no meio.
-  const ligarSomDoComeco = useCallback(() => {
-    enviar("unmute");
-    enviar("setVolume", 100);
-    enviar("setCurrentTime", 0);
-    enviar("play");
-  }, [enviar]);
-
-  // Roda uma única vez, na primeira interação do visitante com a página.
-  const naPrimeiraInteracao = useCallback(() => {
-    if (jaAtivouRef.current) return;
-    jaAtivouRef.current = true;
-    setInteragiu(true);
-    // Se o player ainda não respondeu "ready", o comando se perderia:
-    // guardamos para disparar assim que ele avisar que está pronto.
-    if (playerProntoRef.current) ligarSomDoComeco();
-    else pendenteRef.current = true;
-  }, [ligarSomDoComeco]);
-
   useEffect(() => {
-    // Cliques dentro do iframe não chegam aqui (é cross-origin): quem cobre o
-    // clique em cima do vídeo é o escudo lá embaixo.
-    // Ouvimos "click", e não "pointerdown", de propósito: no pointerdown o
-    // escudo sairia da tela ainda no meio do clique, e o mouseup seguinte
-    // cairia dentro do iframe, fazendo o player pausar o vídeo.
-    // "wheel" e "touchmove" cobrem a rolagem, mas sem o "scroll": esse último o
-    // próprio navegador dispara ao restaurar a posição da página, o que tiraria
-    // o escudo antes de o visitante ter feito qualquer coisa.
-    const gestos = ["click", "keydown", "wheel", "touchmove"] as const;
-    const aoInteragir = () => naPrimeiraInteracao();
+    if (escudoFora) return;
 
-    const naMensagem = (evento: MessageEvent) => {
-      if (evento.origin !== PLAYER_ORIGIN) return;
-      try {
-        const dados = typeof evento.data === "string" ? JSON.parse(evento.data) : evento.data;
-        if (dados?.context !== "player.js" || dados?.event !== "ready") return;
-        playerProntoRef.current = true;
-        setLoaded(true);
-        if (pendenteRef.current) {
-          pendenteRef.current = false;
-          ligarSomDoComeco();
-        }
-      } catch {
-        // mensagem de terceiro sem JSON válido: não é do player, ignora.
-      }
+    // Rolagem e teclado pedem o som, mas o navegador pode recusar: só o clique
+    // é permissão garantida de áudio. Por isso o escudo em cima do vídeo
+    // continua de pé até vir um clique. Enquanto ele está lá, o clique não
+    // entra no iframe, que é o que fazia o player pausar em vez de ligar o som.
+    const pedirSom = () => setComSom(true);
+    const pedirSomELiberar = () => {
+      setComSom(true);
+      setEscudoFora(true);
     };
 
-    gestos.forEach((gesto) => window.addEventListener(gesto, aoInteragir, { passive: true }));
-    window.addEventListener("message", naMensagem);
+    // "wheel" e "touchmove" cobrem a rolagem. Ficamos fora do "scroll" porque o
+    // próprio navegador o dispara ao restaurar a posição da página.
+    const tentativas = ["wheel", "touchmove", "keydown"] as const;
+    tentativas.forEach((gesto) => window.addEventListener(gesto, pedirSom, { passive: true }));
+    window.addEventListener("click", pedirSomELiberar, { passive: true });
 
     return () => {
-      gestos.forEach((gesto) => window.removeEventListener(gesto, aoInteragir));
-      window.removeEventListener("message", naMensagem);
+      tentativas.forEach((gesto) => window.removeEventListener(gesto, pedirSom));
+      window.removeEventListener("click", pedirSomELiberar);
     };
-  }, [naPrimeiraInteracao, ligarSomDoComeco]);
+  }, [escudoFora]);
+
+  // Trocar o src recarrega o player sem mudo. O Bunny guarda onde o visitante
+  // parou e volta pra lá sozinho, então mandamos o começo assim que carrega e
+  // de novo logo depois, para ganhar desse resume e abrir mesmo no 00:00.
+  const aoCarregarPlayer = useCallback(() => {
+    setLoaded(true);
+    if (!comSom) return;
+    const doComeco = () => {
+      enviar("setCurrentTime", 0);
+      enviar("play");
+    };
+    doComeco();
+    setTimeout(doComeco, 900);
+    setTimeout(doComeco, 1800);
+  }, [comSom, enviar]);
 
   return (
     <div className="relative aspect-video overflow-hidden rounded-[20px] bg-[#070906]">
@@ -314,24 +296,24 @@ function VslPlayer() {
       {mounted && (
         <iframe
           ref={frameRef}
-          src={VSL_URL}
+          src={vslUrl(!comSom)}
           title="Conheça o MakersHub"
           className={`absolute inset-0 h-full w-full transition-opacity duration-500 ${
             loaded ? "opacity-100" : "opacity-0"
           }`}
           allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture; fullscreen"
           allowFullScreen
-          onLoad={() => setLoaded(true)}
+          onLoad={aoCarregarPlayer}
         />
       )}
 
-      {/* Escudo invisível: segura o primeiro clique em cima do vídeo, senão ele
-          entraria no iframe e o player pausaria em vez de ligar o som. Some na
-          primeira interação e devolve os controles ao visitante. */}
-      {!interagiu && (
+      {/* Escudo invisível: segura o clique em cima do vídeo até o visitante ter
+          clicado uma vez. Sem ele esse clique cairia dentro do iframe e o
+          player só pausaria, em vez de ligar o som. Depois sai e devolve os
+          controles do player. */}
+      {!escudoFora && (
         <button
           type="button"
-          onClick={naPrimeiraInteracao}
           aria-label="Ativar o som e assistir desde o começo"
           className="absolute inset-0 z-20 h-full w-full cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#90f826]"
         />
