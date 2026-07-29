@@ -1350,11 +1350,10 @@ function ApprovalCard({
   }, [item.drive_file_id, embedUrl, priority, useNativeMobilePlayer]);
 
   useEffect(() => {
-    if (!(useNativeMobilePlayer ? nativeVideoUrl : embedUrl) || !previewRequested || previewReady)
-      return;
+    if (useNativeMobilePlayer || !embedUrl || !previewRequested || previewReady) return;
     const timeout = window.setTimeout(() => setPreviewSlow(true), 8_000);
     return () => window.clearTimeout(timeout);
-  }, [embedUrl, nativeVideoUrl, previewReady, previewRequested, useNativeMobilePlayer]);
+  }, [embedUrl, previewReady, previewRequested, useNativeMobilePlayer]);
 
   const requestChanges = async () => {
     const validPoints = adjustmentPoints.filter((point) => point.change.trim());
@@ -1430,6 +1429,8 @@ function ApprovalCard({
             playsInline
             preload={priority ? "metadata" : "none"}
             className="absolute inset-0 size-full bg-black object-contain"
+            onLoadedMetadata={() => setPreviewReady(true)}
+            onCanPlay={() => setPreviewReady(true)}
             onLoadedData={() => setPreviewReady(true)}
           />
         ) : embedUrl && previewRequested ? (
@@ -1446,7 +1447,7 @@ function ApprovalCard({
             onLoad={() => setPreviewReady(true)}
           />
         ) : null}
-        {embedUrl && previewRequested && !previewReady && (
+        {!useNativeMobilePlayer && embedUrl && previewRequested && !previewReady && (
           <div
             className="absolute inset-0 grid place-items-center bg-black/60 backdrop-blur-[2px]"
             role="status"
