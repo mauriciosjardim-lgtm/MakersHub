@@ -206,7 +206,7 @@ function ProjetosPage() {
     }),
   ).length;
   const semanaInicio = addWeeks(startOfWeek(new Date(), { weekStartsOn: 1 }), semanaOffset);
-  const semanaFim = addDays(semanaInicio, 4);
+  const semanaFim = addDays(semanaInicio, 6);
 
   useEffect(() => {
     try {
@@ -705,7 +705,7 @@ function Semana({
   semanaInicio: Date;
   onAbrir: (id: string) => void;
 }) {
-  const dias = Array.from({ length: 5 }, (_, i) => addDays(semanaInicio, i));
+  const dias = Array.from({ length: 7 }, (_, i) => addDays(semanaInicio, i));
   const ids = new Set(projetos.map((p) => p.id));
   const scrollRef = useRef<HTMLDivElement>(null);
   const moverSemana = (direcao: -1 | 1) => {
@@ -714,7 +714,7 @@ function Semana({
 
   return (
     <div className="min-w-0">
-      <div className="flex items-center justify-between gap-3 border-b border-border/50 px-3 py-2 xl:hidden">
+      <div className="flex items-center justify-between gap-3 border-b border-border/50 px-3 py-2 2xl:hidden">
         <p className="text-[10px] text-muted-foreground">
           Navegue horizontalmente para ver todos os dias
         </p>
@@ -741,7 +741,7 @@ function Semana({
         ref={scrollRef}
         className="max-w-full overflow-x-auto overscroll-x-contain [scrollbar-gutter:stable]"
       >
-        <div className="grid min-w-[1050px] grid-cols-5 gap-3 p-3">
+        <div className="grid min-w-[1470px] grid-cols-7 gap-3 p-3">
           {dias.map((d, dayIndex) => {
             const ts = tarefas.filter(
               (t) => ids.has(t.projetoId) && t.prazo && isSameDay(new Date(t.prazo), d),
