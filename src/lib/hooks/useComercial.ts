@@ -153,11 +153,7 @@ function rowToLead(r: LeadRow): Lead {
   };
 }
 
-function relacionarLeads(
-  rows: LeadRow[],
-  links: LeadLinkRow[],
-  propostas: { id: string; lead_id: string | null }[],
-) {
+function relacionarLeads(rows: LeadRow[], links: LeadLinkRow[]) {
   const porLead = new Map<
     string,
     Pick<Lead, "propostasIds" | "contratosIds" | "projetosIds" | "lancamentosIds">
@@ -175,16 +171,8 @@ function relacionarLeads(
     return novo;
   };
 
-  for (const proposta of propostas) {
-    if (proposta.lead_id) rel(proposta.lead_id).propostasIds.push(proposta.id);
-  }
   for (const link of links) {
-    const destino = rel(link.lead_id);
-    if (link.tipo === "proposta" && !destino.propostasIds.includes(link.entidade_id))
-      destino.propostasIds.push(link.entidade_id);
-    if (link.tipo === "contrato") destino.contratosIds.push(link.entidade_id);
-    if (link.tipo === "projeto") destino.projetosIds.push(link.entidade_id);
-    if (link.tipo === "financeiro") destino.lancamentosIds.push(link.entidade_id);
+    if (link.tipo === "projeto") rel(link.lead_id).projetosIds.push(link.entidade_id);
   }
 
   return rows.map((row) => ({ ...rowToLead(row), ...rel(row.id) }));
@@ -267,27 +255,22 @@ async function init() {
   setStore({ loading: true, error: null });
 
   try {
-    const [e, c, l, tl, ta, cfg, links, propostas] = await Promise.all([
+    const [e, c, l, tl, ta, cfg, links] = await Promise.all([
       supabase.from("clientes_comercial").select("*").order("nome"),
       supabase.from("contatos_comercial").select("*").order("nome"),
       supabase.from("leads").select("*").order("criado_em", { ascending: false }),
       supabase.from("timeline_lead").select("*").order("quando", { ascending: false }),
       supabase.from("tarefas_lead").select("*").order("prazo"),
       supabase.from("configuracao_comercial").select("etapas_labels").maybeSingle(),
-      supabase.from("comercial_lead_links").select("lead_id,tipo,entidade_id"),
-      supabase.from("propostas").select("id,lead_id").not("lead_id", "is", null),
+      supabase
+        .from("comercial_lead_links")
+        .select("lead_id,tipo,entidade_id")
+        .eq("tipo", "projeto"),
     ]);
     const queryError =
-      e.error ??
-      c.error ??
-      l.error ??
-      tl.error ??
-      ta.error ??
-      cfg.error ??
-      links.error ??
-      propostas.error;
+      e.error ?? c.error ?? l.error ?? tl.error ?? ta.error ?? cfg.error ?? links.error;
     if (queryError) throw queryError;
-    const todosLeads = relacionarLeads(l.data ?? [], links.data ?? [], propostas.data ?? []);
+    const todosLeads = relacionarLeads(l.data ?? [], links.data ?? []);
 
     setStore({
       empresas: (e.data ?? []).map(rowToEmpresa),
@@ -326,7 +309,6 @@ async function init() {
         { event: "*", schema: "public", table: "comercial_lead_links" },
         refresh,
       )
-      .on("postgres_changes", { event: "*", schema: "public", table: "propostas" }, refresh)
       .subscribe();
   } catch (error) {
     initialized = false;
@@ -339,27 +321,22 @@ async function init() {
 
 async function refresh() {
   try {
-    const [e, c, l, tl, ta, cfg, links, propostas] = await Promise.all([
+    const [e, c, l, tl, ta, cfg, links] = await Promise.all([
       supabase.from("clientes_comercial").select("*").order("nome"),
       supabase.from("contatos_comercial").select("*").order("nome"),
       supabase.from("leads").select("*").order("criado_em", { ascending: false }),
       supabase.from("timeline_lead").select("*").order("quando", { ascending: false }),
       supabase.from("tarefas_lead").select("*").order("prazo"),
       supabase.from("configuracao_comercial").select("etapas_labels").maybeSingle(),
-      supabase.from("comercial_lead_links").select("lead_id,tipo,entidade_id"),
-      supabase.from("propostas").select("id,lead_id").not("lead_id", "is", null),
+      supabase
+        .from("comercial_lead_links")
+        .select("lead_id,tipo,entidade_id")
+        .eq("tipo", "projeto"),
     ]);
     const queryError =
-      e.error ??
-      c.error ??
-      l.error ??
-      tl.error ??
-      ta.error ??
-      cfg.error ??
-      links.error ??
-      propostas.error;
+      e.error ?? c.error ?? l.error ?? tl.error ?? ta.error ?? cfg.error ?? links.error;
     if (queryError) throw queryError;
-    const todosLeads = relacionarLeads(l.data ?? [], links.data ?? [], propostas.data ?? []);
+    const todosLeads = relacionarLeads(l.data ?? [], links.data ?? []);
     setStore({
       empresas: (e.data ?? []).map(rowToEmpresa),
       contatos: (c.data ?? []).map(rowToContato),
@@ -686,6 +663,13 @@ export const comercial = {
     return true;
   },
 
+  async removerContato(contatoId: string) {
+    const { error } = await supabase.from("contatos_comercial").delete().eq("id", contatoId);
+    if (dbErro(error, "excluir contato")) return false;
+    setStore({ contatos: store.contatos.filter((contato) => contato.id !== contatoId) });
+    return true;
+  },
+
   async addContato(clienteId: string, dados: Omit<Contato, "id" | "empresaId">) {
     const empresa_id = await getEmpresaId();
     const { data, error } = await supabase
@@ -846,25 +830,15 @@ export const comercial = {
     return true;
   },
 
-  async fecharLead(
-    leadId: string,
-    opcoes: {
-      proposta: boolean;
-      contrato: boolean;
-      projeto: boolean;
-      cobranca: boolean;
-      cliente: boolean;
-      onboarding: boolean;
-    },
-  ) {
+  async fecharLead(leadId: string, criarProjeto: boolean) {
     const { data, error } = await supabase.rpc("fechar_lead_comercial", {
       p_lead_id: leadId,
-      p_criar_proposta: opcoes.proposta,
-      p_criar_contrato: opcoes.contrato,
-      p_criar_projeto: opcoes.projeto,
-      p_criar_cobranca: opcoes.cobranca,
-      p_promover_cliente: opcoes.cliente,
-      p_agendar_onboarding: opcoes.onboarding,
+      p_criar_proposta: false,
+      p_criar_contrato: false,
+      p_criar_projeto: criarProjeto,
+      p_criar_cobranca: false,
+      p_promover_cliente: false,
+      p_agendar_onboarding: false,
     });
     if (dbErro(error, "fechar lead")) return null;
     await refresh();

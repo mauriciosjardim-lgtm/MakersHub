@@ -35,6 +35,7 @@ import { EtapaIcon } from "./etapa-icon";
 import { LeadCard } from "./lead-card";
 import { LeadDrawer } from "./lead-drawer";
 import { FecharModal } from "./fechar-modal";
+import { ExcluirLeadDialog } from "./excluir-lead-dialog";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -49,7 +50,6 @@ export function JornadaBoard({ filtroFn }: { filtroFn?: (lead: Lead) => boolean 
   const [leadParaExcluir, setLeadParaExcluir] = useState<Lead | null>(null);
   const [leadParaFechar, setLeadParaFechar] = useState<Lead | null>(null);
   const [motivoArquivo, setMotivoArquivo] = useState("");
-  const [confirmacaoExclusao, setConfirmacaoExclusao] = useState("");
   const [processando, setProcessando] = useState(false);
   const filtrados = useMemo(() => (filtroFn ? leads.filter(filtroFn) : leads), [filtroFn, leads]);
   const arquivados = useMemo(
@@ -193,6 +193,7 @@ export function JornadaBoard({ filtroFn }: { filtroFn?: (lead: Lead) => boolean 
                     lead={lead}
                     onOpen={setOpenLead}
                     onArchive={setLeadParaArquivar}
+                    onDelete={setLeadParaExcluir}
                   />
                 ))}
               </Coluna>
@@ -257,48 +258,10 @@ export function JornadaBoard({ filtroFn }: { filtroFn?: (lead: Lead) => boolean 
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!leadParaExcluir} onOpenChange={(open) => !open && setLeadParaExcluir(null)}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Excluir oportunidade definitivamente</DialogTitle>
-            <DialogDescription>
-              O histórico comercial será removido. Registros já criados nos outros módulos
-              permanecem.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2">
-            <p className="text-xs text-muted-foreground">
-              Digite <strong className="text-foreground">EXCLUIR</strong> para confirmar.
-            </p>
-            <Input
-              value={confirmacaoExclusao}
-              onChange={(event) => setConfirmacaoExclusao(event.target.value)}
-              placeholder="EXCLUIR"
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" disabled={processando} onClick={() => setLeadParaExcluir(null)}>
-              Cancelar
-            </Button>
-            <Button
-              variant="destructive"
-              disabled={processando || confirmacaoExclusao !== "EXCLUIR"}
-              onClick={async () => {
-                if (!leadParaExcluir) return;
-                setProcessando(true);
-                const ok = await comercial.removerLead(leadParaExcluir.id);
-                setProcessando(false);
-                if (!ok) return;
-                toast.success("Oportunidade excluída definitivamente.");
-                setConfirmacaoExclusao("");
-                setLeadParaExcluir(null);
-              }}
-            >
-              {processando ? "Excluindo…" : "Excluir definitivamente"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ExcluirLeadDialog
+        lead={leadParaExcluir}
+        onOpenChange={(open) => !open && setLeadParaExcluir(null)}
+      />
     </>
   );
 }

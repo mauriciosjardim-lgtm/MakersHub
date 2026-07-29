@@ -1,6 +1,12 @@
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
@@ -32,13 +38,12 @@ import {
   Users,
   ArrowUpRight,
   ListChecks,
-  FileSignature,
   FolderKanban,
-  DollarSign,
   Info,
   Activity,
   Star,
   CheckCircle2,
+  Trash2,
 } from "lucide-react";
 import { Sms, Add, MagicStar, MessageCircle } from "iconsax-react";
 import { format } from "date-fns";
@@ -62,6 +67,7 @@ import {
 import { Timeline } from "./timeline";
 import { formatBRL, maskCurrency, maskPhone, isValidEmail } from "@/lib/format";
 import { FecharModal } from "./fechar-modal";
+import { ExcluirLeadDialog } from "./excluir-lead-dialog";
 import { EtapaIcon } from "./etapa-icon";
 import { cn } from "@/lib/utils";
 
@@ -94,7 +100,7 @@ const PROGRESSO: EtapaJornada[] = [
   "fechado",
 ];
 
-function DrawerBody({ lead, onClose: _onClose }: { lead: Lead; onClose: () => void }) {
+function DrawerBody({ lead, onClose }: { lead: Lead; onClose: () => void }) {
   const navigate = useNavigate();
   const etapas = useEtapasComercial();
   const empresa = getEmpresa(lead.empresaId);
@@ -109,6 +115,7 @@ function DrawerBody({ lead, onClose: _onClose }: { lead: Lead; onClose: () => vo
   const { score, estrelas, rotulo } = leadScore(lead);
 
   const [fechando, setFechando] = useState(false);
+  const [excluindo, setExcluindo] = useState(false);
   const [novoContatoAberto, setNovoContatoAberto] = useState(false);
   const [novaTarefa, setNovaTarefa] = useState("");
   const [novaObs, setNovaObs] = useState("");
@@ -121,6 +128,9 @@ function DrawerBody({ lead, onClose: _onClose }: { lead: Lead; onClose: () => vo
     <>
       {/* Cabeçalho — empresa, valor, score, progressão */}
       <SheetHeader className="sticky top-0 z-10 space-y-0 border-b border-border bg-background/95 px-6 py-5 backdrop-blur-xl">
+        <SheetDescription className="sr-only">
+          Detalhes da oportunidade comercial de {empresa?.nome}.
+        </SheetDescription>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
@@ -160,35 +170,51 @@ function DrawerBody({ lead, onClose: _onClose }: { lead: Lead; onClose: () => vo
       </SheetHeader>
 
       {/* Ações rápidas */}
-      {!lead.arquivadoEm && (
-        <div className="flex flex-wrap gap-2 border-b border-border bg-surface-1/30 px-6 py-3">
-          <QuickBtn icon={Phone} label="Ligação" soon onClick={() => {}} />
-          <QuickBtn icon={FileText} label="Proposta" soon onClick={() => {}} />
-          <QuickBtn icon={CalendarIcon} label="Reunião" soon onClick={() => {}} />
-          <div className="ml-auto flex gap-2">
-            {lead.etapa !== "fechado" && lead.etapa !== "perdido" && (
-              <>
-                <QuickBtn
-                  icon={XCircle}
-                  label="Perdido"
-                  tone="destructive"
-                  onClick={async () => {
-                    const movido = await comercial.moverEtapa(lead.id, "perdido");
-                    if (!movido) return;
-                    toast("Lead movido para Perdido.");
-                  }}
-                />
-                <QuickBtn
-                  icon={CheckCircle2}
-                  label="Marcar como fechado"
-                  tone="success"
-                  onClick={() => setFechando(true)}
-                />
-              </>
-            )}
-          </div>
+      <div className="flex flex-wrap gap-2 border-b border-border bg-surface-1/30 px-6 py-3">
+        {!lead.arquivadoEm && (
+          <>
+            <QuickBtn icon={Phone} label="Ligação" soon onClick={() => {}} />
+            <QuickBtn icon={FileText} label="Proposta" soon onClick={() => {}} />
+            <QuickBtn icon={CalendarIcon} label="Reunião" soon onClick={() => {}} />
+          </>
+        )}
+        <div className="ml-auto flex flex-wrap gap-2">
+          {!lead.arquivadoEm && lead.etapa !== "fechado" && lead.etapa !== "perdido" && (
+            <>
+              <QuickBtn
+                icon={XCircle}
+                label="Perdido"
+                tone="destructive"
+                onClick={async () => {
+                  const movido = await comercial.moverEtapa(lead.id, "perdido");
+                  if (!movido) return;
+                  toast("Lead movido para Perdido.");
+                }}
+              />
+              <QuickBtn
+                icon={CheckCircle2}
+                label="Marcar como fechado"
+                tone="success"
+                onClick={() => setFechando(true)}
+              />
+            </>
+          )}
+          {!lead.arquivadoEm && lead.etapa === "fechado" && lead.projetosIds.length === 0 && (
+            <QuickBtn
+              icon={FolderKanban}
+              label="Criar em Projetos"
+              tone="success"
+              onClick={() => setFechando(true)}
+            />
+          )}
+          <QuickBtn
+            icon={Trash2}
+            label="Excluir"
+            tone="destructive"
+            onClick={() => setExcluindo(true)}
+          />
         </div>
-      )}
+      </div>
 
       {/* Tabs — central de tudo */}
       <Tabs defaultValue="informacoes" className="px-6 py-5">
@@ -205,17 +231,8 @@ function DrawerBody({ lead, onClose: _onClose }: { lead: Lead; onClose: () => vo
           <TabTrigger value="atividades" icon={ListChecks}>
             Atividades
           </TabTrigger>
-          <TabTrigger value="propostas" icon={FileText} badge={lead.propostasIds.length}>
-            Propostas
-          </TabTrigger>
-          <TabTrigger value="contratos" icon={FileSignature} badge={lead.contratosIds.length}>
-            Contratos
-          </TabTrigger>
           <TabTrigger value="projetos" icon={FolderKanban} badge={lead.projetosIds.length}>
             Projetos
-          </TabTrigger>
-          <TabTrigger value="financeiro" icon={DollarSign} badge={lead.lancamentosIds.length}>
-            Financeiro
           </TabTrigger>
         </TabsList>
 
@@ -661,26 +678,6 @@ function DrawerBody({ lead, onClose: _onClose }: { lead: Lead; onClose: () => vo
         </TabsContent>
 
         {/* ============ MÓDULOS LIGADOS ============ */}
-        <TabsContent value="propostas">
-          <Modulo
-            titulo="Propostas"
-            descricao="Documentos comerciais enviados para esse lead."
-            icone={FileText}
-            qtd={lead.propostasIds.length}
-            acao="Abrir propostas"
-            onAcao={() => navigate({ to: "/propostas" })}
-          />
-        </TabsContent>
-        <TabsContent value="contratos">
-          <Modulo
-            titulo="Contratos"
-            descricao="Contratos prontos para assinatura digital."
-            icone={FileSignature}
-            qtd={lead.contratosIds.length}
-            acao="Abrir contratos"
-            onAcao={() => navigate({ to: "/contratos" })}
-          />
-        </TabsContent>
         <TabsContent value="projetos">
           <Modulo
             titulo="Projetos"
@@ -691,19 +688,14 @@ function DrawerBody({ lead, onClose: _onClose }: { lead: Lead; onClose: () => vo
             onAcao={() => navigate({ to: "/projetos" })}
           />
         </TabsContent>
-        <TabsContent value="financeiro">
-          <Modulo
-            titulo="Financeiro"
-            descricao="Cobranças, recebimentos e lançamentos vinculados."
-            icone={DollarSign}
-            qtd={lead.lancamentosIds.length}
-            acao="Abrir financeiro"
-            onAcao={() => navigate({ to: "/financeiro" })}
-          />
-        </TabsContent>
       </Tabs>
 
       <FecharModal lead={lead} open={fechando} onOpenChange={setFechando} />
+      <ExcluirLeadDialog
+        lead={excluindo ? lead : null}
+        onOpenChange={setExcluindo}
+        onDeleted={onClose}
+      />
       {empresa && (
         <NovoContatoDialog
           empresaId={empresa.id}
