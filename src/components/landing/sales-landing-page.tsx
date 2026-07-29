@@ -11,7 +11,6 @@ import {
   MessageSquareText,
   Mic,
   MonitorPlay,
-  Play,
   Sparkles,
   Users,
   WalletCards,
@@ -19,13 +18,16 @@ import {
   Zap,
 } from "lucide-react";
 import { Briefcase, ClipboardText, EmptyWallet, Flash, Kanban, TickCircle } from "iconsax-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { LogoMakersHub } from "@/components/logo-makershub";
 
 const CHECKOUT_URL = "/checkout";
 
+const PLAYER_ORIGIN = "https://player.mediadelivery.net";
+
 const VSL_URL =
-  "https://www.youtube-nocookie.com/embed/Vm3l5qYhm8E?autoplay=1&controls=0&disablekb=1&fs=0&rel=0&playsinline=1&iv_load_policy=3";
+  `${PLAYER_ORIGIN}/embed/716343/7944589d-9b6e-4aa0-a45c-41e058c66904` +
+  "?autoplay=true&loop=false&muted=true&preload=true&responsive=true";
 
 const pains = [
   "O lead chega no WhatsApp e some porque ninguém fez o follow-up.",
@@ -214,11 +216,85 @@ function Header() {
 }
 
 function VslPlayer() {
-  const [started, setStarted] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [interagiu, setInteragiu] = useState(false);
+  const frameRef = useRef<HTMLIFrameElement>(null);
+  const jaAtivouRef = useRef(false);
+  const playerProntoRef = useRef(false);
+  const pendenteRef = useRef(false);
+
+  // O iframe só entra depois da hidratação. Se viesse pronto no HTML do
+  // servidor, o navegador carregaria o player antes do React pendurar o
+  // onLoad: o evento se perderia e o poster nunca sairia da frente.
+  useEffect(() => setMounted(true), []);
+
+  const enviar = useCallback((method: string, value?: number) => {
+    frameRef.current?.contentWindow?.postMessage(
+      JSON.stringify({ context: "player.js", version: "0.0.11", method, value }),
+      PLAYER_ORIGIN,
+    );
+  }, []);
+
+  // Tira o mudo e recomeça a demo do zero, para o visitante não pegar o vídeo
+  // no meio.
+  const ligarSomDoComeco = useCallback(() => {
+    enviar("unmute");
+    enviar("setVolume", 100);
+    enviar("setCurrentTime", 0);
+    enviar("play");
+  }, [enviar]);
+
+  // Roda uma única vez, na primeira interação do visitante com a página.
+  const naPrimeiraInteracao = useCallback(() => {
+    if (jaAtivouRef.current) return;
+    jaAtivouRef.current = true;
+    setInteragiu(true);
+    // Se o player ainda não respondeu "ready", o comando se perderia:
+    // guardamos para disparar assim que ele avisar que está pronto.
+    if (playerProntoRef.current) ligarSomDoComeco();
+    else pendenteRef.current = true;
+  }, [ligarSomDoComeco]);
+
+  useEffect(() => {
+    // Cliques dentro do iframe não chegam aqui (é cross-origin): quem cobre o
+    // clique em cima do vídeo é o escudo lá embaixo.
+    // Ouvimos "click", e não "pointerdown", de propósito: no pointerdown o
+    // escudo sairia da tela ainda no meio do clique, e o mouseup seguinte
+    // cairia dentro do iframe, fazendo o player pausar o vídeo.
+    // "wheel" e "touchmove" cobrem a rolagem, mas sem o "scroll": esse último o
+    // próprio navegador dispara ao restaurar a posição da página, o que tiraria
+    // o escudo antes de o visitante ter feito qualquer coisa.
+    const gestos = ["click", "keydown", "wheel", "touchmove"] as const;
+    const aoInteragir = () => naPrimeiraInteracao();
+
+    const naMensagem = (evento: MessageEvent) => {
+      if (evento.origin !== PLAYER_ORIGIN) return;
+      try {
+        const dados = typeof evento.data === "string" ? JSON.parse(evento.data) : evento.data;
+        if (dados?.context !== "player.js" || dados?.event !== "ready") return;
+        playerProntoRef.current = true;
+        setLoaded(true);
+        if (pendenteRef.current) {
+          pendenteRef.current = false;
+          ligarSomDoComeco();
+        }
+      } catch {
+        // mensagem de terceiro sem JSON válido: não é do player, ignora.
+      }
+    };
+
+    gestos.forEach((gesto) => window.addEventListener(gesto, aoInteragir, { passive: true }));
+    window.addEventListener("message", naMensagem);
+
+    return () => {
+      gestos.forEach((gesto) => window.removeEventListener(gesto, aoInteragir));
+      window.removeEventListener("message", naMensagem);
+    };
+  }, [naPrimeiraInteracao, ligarSomDoComeco]);
 
   return (
-    <div className="group relative aspect-video overflow-hidden rounded-[20px] bg-[#070906]">
+    <div className="relative aspect-video overflow-hidden rounded-[20px] bg-[#070906]">
       <img
         src="/ads/makershub-dashboard-real-auth.png"
         alt=""
@@ -226,46 +302,38 @@ function VslPlayer() {
         decoding="async"
         fetchPriority="high"
         className={`absolute inset-0 h-full w-full object-cover transition duration-500 ${
-          started && loaded ? "scale-[1.02] opacity-0" : "opacity-75"
+          loaded ? "scale-[1.02] opacity-0" : "opacity-75"
         }`}
       />
       <div
         className={`absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(144,248,38,0.08),transparent_45%),linear-gradient(to_top,rgba(0,0,0,0.86),rgba(0,0,0,0.22),rgba(0,0,0,0.48))] transition duration-500 ${
-          started && loaded ? "opacity-0" : "opacity-100"
+          loaded ? "opacity-0" : "opacity-100"
         }`}
       />
 
-      {!started && (
-        <button
-          type="button"
-          onClick={() => setStarted(true)}
-          className="absolute inset-0 z-10 grid w-full place-items-center text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#90f826]"
-          aria-label="Assistir demonstração do MakersHub"
-        >
-          <span className="flex flex-col items-center px-6 text-center">
-            <span className="grid size-17 place-items-center rounded-full border border-[#c9ff8f]/40 bg-[#90f826] text-[#10140c] shadow-[0_0_65px_rgba(144,248,38,0.38)] transition duration-300 group-hover:scale-105 sm:size-20">
-              <Play className="ml-1 size-7 fill-current sm:size-8" />
-            </span>
-            <span className="mt-5 text-xs font-bold uppercase tracking-[0.22em] text-[#bfff7e]">
-              Demonstração completa
-            </span>
-            <span className="mt-2 max-w-md text-base font-medium text-white sm:text-lg">
-              Veja o MakersHub trabalhando por dentro
-            </span>
-          </span>
-        </button>
-      )}
-
-      {started && (
+      {mounted && (
         <iframe
+          ref={frameRef}
           src={VSL_URL}
           title="Conheça o MakersHub"
           className={`absolute inset-0 h-full w-full transition-opacity duration-500 ${
             loaded ? "opacity-100" : "opacity-0"
           }`}
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-          referrerPolicy="strict-origin-when-cross-origin"
+          allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture; fullscreen"
+          allowFullScreen
           onLoad={() => setLoaded(true)}
+        />
+      )}
+
+      {/* Escudo invisível: segura o primeiro clique em cima do vídeo, senão ele
+          entraria no iframe e o player pausaria em vez de ligar o som. Some na
+          primeira interação e devolve os controles ao visitante. */}
+      {!interagiu && (
+        <button
+          type="button"
+          onClick={naPrimeiraInteracao}
+          aria-label="Ativar o som e assistir desde o começo"
+          className="absolute inset-0 z-20 h-full w-full cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#90f826]"
         />
       )}
     </div>
