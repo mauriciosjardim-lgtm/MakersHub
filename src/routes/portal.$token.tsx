@@ -1390,7 +1390,7 @@ function ApprovalCard({
       className="group grid overflow-hidden rounded-3xl border border-white/[0.09] bg-white/[0.025] transition hover:border-[var(--portal-accent)]/25 lg:grid-cols-[minmax(360px,.95fr)_minmax(0,1.05fr)]"
       aria-busy={approving}
     >
-      <div className="relative aspect-video w-full overflow-hidden bg-black lg:self-start">
+      <div className="relative aspect-[4/3] w-full overflow-hidden bg-black sm:aspect-video lg:self-start">
         {poster ? (
           <img
             src={poster}
