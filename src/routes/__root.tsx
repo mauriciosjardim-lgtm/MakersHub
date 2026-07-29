@@ -13,7 +13,7 @@ import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { Toaster } from "@/components/ui/sonner";
 import { getSessionHint } from "@/lib/sessionHint";
-import { LandingPage } from "@/components/landing/landing-page";
+import { SalesLandingPage } from "@/components/landing/sales-landing-page";
 import { MakersHubUpdatedScreen } from "@/components/makershub-updated-screen";
 import { trackMetaPageView } from "@/lib/meta-pixel";
 
@@ -112,7 +112,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   head: () => ({
     meta: [
       { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1" },
+      {
+        name: "viewport",
+        content: "width=device-width, initial-scale=1, viewport-fit=cover",
+      },
       { title: "MakersHub — O Hub Completo para Produtoras de Audiovisual" },
       {
         name: "description",
@@ -230,7 +233,7 @@ function RootComponent() {
   if (!sessionHint && pathname === "/") {
     return (
       <QueryClientProvider client={queryClient}>
-        <LandingPage />
+        <SalesLandingPage />
         <Toaster />
       </QueryClientProvider>
     );
