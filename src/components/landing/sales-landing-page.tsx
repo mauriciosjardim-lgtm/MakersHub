@@ -11,24 +11,38 @@ import {
   MessageSquareText,
   Mic,
   MonitorPlay,
+  Play,
   Sparkles,
   Users,
+  VolumeX,
   WalletCards,
   X,
   Zap,
 } from "lucide-react";
 import { Briefcase, ClipboardText, EmptyWallet, Flash, Kanban, TickCircle } from "iconsax-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { LogoMakersHub } from "@/components/logo-makershub";
 
 const CHECKOUT_URL = "/checkout";
 
-const PLAYER_ORIGIN = "https://player.mediadelivery.net";
+// MP4 servido direto pelo CDN do Bunny, sem o player deles: o controle de som,
+// progresso e play/pause é todo nosso. O CDN exige referrer autorizado.
+// MP4 e não o playlist.m3u8 de propósito. Com HLS o reinício no 00:00 não se
+// sustentava: o hls.js administra a posição de carregamento e o GapController
+// dele, ao ver que o buffer não cobre o início, devolvia o vídeo para o trecho
+// que já tinha rodado. Com MP4 o currentTime é só nosso.
+const VSL_URL =
+  "https://vz-8f17a433-360.b-cdn.net/7944589d-9b6e-4aa0-a45c-41e058c66904/play_720p.mp4";
 
-// Trocar o src recarrega o player, e é assim que a demo recomeça do 00:00.
-const vslUrl = (mudo: boolean) =>
-  `${PLAYER_ORIGIN}/embed/716343/7944589d-9b6e-4aa0-a45c-41e058c66904` +
-  `?autoplay=true&loop=false&muted=${mudo}&preload=true&responsive=true`;
+// A barra corre rápido no começo e vai desacelerando. É a curva que os players
+// de VSL usam: o visitante sente que já andou bastante e segue assistindo.
+// Rende ~55% no primeiro quarto do vídeo, contra 25% de uma barra linear.
+function progressoVsl(atual: number, total: number) {
+  if (!total || !Number.isFinite(total) || atual <= 0) return 0;
+  const fator = 32;
+  const razao = Math.min(atual / total, 1);
+  return Math.min((Math.log(1 + fator * razao) / Math.log(fator + 1)) * 100, 100);
+}
 
 const pains = [
   "O lead chega no WhatsApp e some porque ninguém fez o follow-up.",
@@ -217,107 +231,145 @@ function Header() {
 }
 
 function VslPlayer() {
-  const [mounted, setMounted] = useState(false);
-  const [loaded, setLoaded] = useState(false);
-  const [comSom, setComSom] = useState(false);
-  const [escudoFora, setEscudoFora] = useState(false);
-  const frameRef = useRef<HTMLIFrameElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const barraRef = useRef<HTMLDivElement>(null);
+  const [somLigado, setSomLigado] = useState(false);
+  const [pausado, setPausado] = useState(false);
+  const [carregando, setCarregando] = useState(true);
 
-  // O iframe só entra depois da hidratação. Se viesse pronto no HTML do
-  // servidor, o navegador carregaria o player antes do React pendurar o
-  // onLoad: o evento se perderia e o poster nunca sairia da frente.
-  useEffect(() => setMounted(true), []);
+  // Primeiro clique do visitante: som e apresentação desde o 00:00.
+  // Só clique, de propósito. Rolagem não vale como permissão de áudio: ao tirar
+  // o mudo sem um clique o Chrome pausa a mídia e recusa o play(), e o vídeo
+  // ficava parado no início. É por isso que o player de referência também espera
+  // o clique.
+  const ligarSom = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (barraRef.current) barraRef.current.style.width = "0%";
+    video.muted = false;
+    video.currentTime = 0;
+    void video.play();
+    setSomLigado(true);
+  };
 
-  const enviar = useCallback((method: string, value?: number) => {
-    frameRef.current?.contentWindow?.postMessage(
-      JSON.stringify({ context: "player.js", version: "0.0.11", method, value }),
-      PLAYER_ORIGIN,
-    );
+  const aoClicar = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (!somLigado) {
+      ligarSom();
+      return;
+    }
+    if (video.paused) void video.play();
+    else video.pause();
+  };
+
+  // O spinner nasce ligado e sai no "canplay". Só que o vídeo pode ficar pronto
+  // antes do React pendurar o handler (cache do navegador, CDN rápido), e aí o
+  // evento nunca chega e o spinner preto cobre o vídeo para sempre: dá exatamente
+  // a impressão de que o vídeo não carregou. Então na montagem eu olho o
+  // readyState em vez de esperar o evento, e garanto o autoplay mudo.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (video.readyState >= 3) setCarregando(false);
+    if (video.paused) void video.play().catch(() => {});
   }, []);
 
+  // A barra é escrita direto no DOM, quadro a quadro, e só enquanto o vídeo
+  // roda de verdade. Isso resolve duas coisas: ela nasce no 00:00 no clique, sem
+  // herdar o que correu durante o autoplay mudo, e ao pausar ela para no frame
+  // exato. Antes eu atualizava no "timeupdate" (a cada ~250ms) com transição de
+  // meio segundo para suavizar, e era essa transição que continuava correndo
+  // depois do pause e empurrava a barra alguns pixels à frente.
   useEffect(() => {
-    if (escudoFora) return;
+    if (!somLigado || pausado) return;
 
-    // Rolagem e teclado pedem o som, mas o navegador pode recusar: só o clique
-    // é permissão garantida de áudio. Por isso o escudo em cima do vídeo
-    // continua de pé até vir um clique. Enquanto ele está lá, o clique não
-    // entra no iframe, que é o que fazia o player pausar em vez de ligar o som.
-    const pedirSom = () => setComSom(true);
-    const pedirSomELiberar = () => {
-      setComSom(true);
-      setEscudoFora(true);
+    let quadro = 0;
+    const desenhar = () => {
+      const video = videoRef.current;
+      const barra = barraRef.current;
+      if (video && barra) {
+        barra.style.width = `${progressoVsl(video.currentTime, video.duration)}%`;
+      }
+      quadro = requestAnimationFrame(desenhar);
     };
+    quadro = requestAnimationFrame(desenhar);
 
-    // "wheel" e "touchmove" cobrem a rolagem. Ficamos fora do "scroll" porque o
-    // próprio navegador o dispara ao restaurar a posição da página.
-    const tentativas = ["wheel", "touchmove", "keydown"] as const;
-    tentativas.forEach((gesto) => window.addEventListener(gesto, pedirSom, { passive: true }));
-    window.addEventListener("click", pedirSomELiberar, { passive: true });
-
-    return () => {
-      tentativas.forEach((gesto) => window.removeEventListener(gesto, pedirSom));
-      window.removeEventListener("click", pedirSomELiberar);
-    };
-  }, [escudoFora]);
-
-  // Trocar o src recarrega o player sem mudo. O Bunny guarda onde o visitante
-  // parou e volta pra lá sozinho, então mandamos o começo assim que carrega e
-  // de novo logo depois, para ganhar desse resume e abrir mesmo no 00:00.
-  const aoCarregarPlayer = useCallback(() => {
-    setLoaded(true);
-    if (!comSom) return;
-    const doComeco = () => {
-      enviar("setCurrentTime", 0);
-      enviar("play");
-    };
-    doComeco();
-    setTimeout(doComeco, 900);
-    setTimeout(doComeco, 1800);
-  }, [comSom, enviar]);
+    return () => cancelAnimationFrame(quadro);
+  }, [somLigado, pausado]);
 
   return (
-    <div className="relative aspect-video overflow-hidden rounded-[20px] bg-[#070906]">
-      <img
-        src="/ads/makershub-dashboard-real-auth.png"
-        alt=""
-        loading="eager"
-        decoding="async"
-        fetchPriority="high"
-        className={`absolute inset-0 h-full w-full object-cover transition duration-500 ${
-          loaded ? "scale-[1.02] opacity-0" : "opacity-75"
-        }`}
+    <div
+      onClick={aoClicar}
+      className="group relative aspect-video cursor-pointer select-none overflow-hidden rounded-[20px] bg-black"
+    >
+      <video
+        ref={videoRef}
+        src={VSL_URL}
+        autoPlay
+        muted
+        playsInline
+        preload="auto"
+        poster="/ads/makershub-dashboard-real-auth.png"
+        className="absolute inset-0 h-full w-full object-cover"
+        onWaiting={() => setCarregando(true)}
+        onCanPlay={() => setCarregando(false)}
+        onLoadedData={() => setCarregando(false)}
+        // Se o CDN falhar, sai o spinner e fica o poster. Preto infinito, não.
+        onError={() => setCarregando(false)}
+        onPlaying={() => {
+          setCarregando(false);
+          setPausado(false);
+        }}
+        onPause={() => setPausado(true)}
       />
+
+      {carregando && (
+        <div className="absolute inset-0 z-30 grid place-items-center bg-black">
+          <span className="size-12 animate-spin rounded-full border-4 border-white/25 border-b-[#90f826]" />
+        </div>
+      )}
+
+      {/* Cartão de som: enquanto o visitante não interage, o vídeo roda mudo e
+          este aviso ocupa o centro. Qualquer clique na página o dispensa. */}
+      {!somLigado && !carregando && (
+        <div className="absolute inset-0 z-20 grid place-items-center bg-black/45 px-4">
+          <div className="flex w-full max-w-xs flex-col items-center gap-3 rounded-xl border border-[#90f826]/30 bg-[#0b0f08]/95 px-6 py-7 text-center shadow-[0_0_80px_rgba(0,0,0,0.9)]">
+            <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-white/60">
+              A apresentação já começou
+            </span>
+            <span className="grid size-14 place-items-center rounded-full bg-[#90f826] text-[#10140c]">
+              <VolumeX className="size-7" />
+            </span>
+            <span className="text-lg font-bold leading-tight text-white">
+              Clique para ouvir
+              <span className="mt-1 block text-sm font-medium text-white/60">
+                e assistir desde o início
+              </span>
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Overlay de pausa, só depois que o som entrou. */}
+      {somLigado && pausado && (
+        <div className="absolute inset-0 z-20 grid place-items-center bg-black/55">
+          <span className="grid size-20 place-items-center rounded-full bg-[#90f826] text-[#10140c] shadow-[0_0_65px_rgba(144,248,38,0.4)] transition group-hover:scale-105">
+            <Play className="ml-1 size-8 fill-current" />
+          </span>
+        </div>
+      )}
+
+      {/* A barra aparece junto com o som, como no player original. */}
       <div
-        className={`absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(144,248,38,0.08),transparent_45%),linear-gradient(to_top,rgba(0,0,0,0.86),rgba(0,0,0,0.22),rgba(0,0,0,0.48))] transition duration-500 ${
-          loaded ? "opacity-0" : "opacity-100"
+        className={`absolute inset-x-0 bottom-0 z-20 h-1.5 bg-white/15 transition-opacity duration-700 ${
+          somLigado ? "opacity-100" : "opacity-0"
         }`}
-      />
-
-      {mounted && (
-        <iframe
-          ref={frameRef}
-          src={vslUrl(!comSom)}
-          title="Conheça o MakersHub"
-          className={`absolute inset-0 h-full w-full transition-opacity duration-500 ${
-            loaded ? "opacity-100" : "opacity-0"
-          }`}
-          allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture; fullscreen"
-          allowFullScreen
-          onLoad={aoCarregarPlayer}
-        />
-      )}
-
-      {/* Escudo invisível: segura o clique em cima do vídeo até o visitante ter
-          clicado uma vez. Sem ele esse clique cairia dentro do iframe e o
-          player só pausaria, em vez de ligar o som. Depois sai e devolve os
-          controles do player. */}
-      {!escudoFora && (
-        <button
-          type="button"
-          aria-label="Ativar o som e assistir desde o começo"
-          className="absolute inset-0 z-20 h-full w-full cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#90f826]"
-        />
-      )}
+      >
+        {/* Sem transição de largura: quem move esta barra é o requestAnimationFrame
+            acima, quadro a quadro. */}
+        <div ref={barraRef} className="h-full w-0 bg-[#90f826]" />
+      </div>
     </div>
   );
 }
