@@ -11,9 +11,9 @@ describe("checkout security contract", () => {
   });
 
   test("never persists checkout passwords", () => {
-    const nullPasswordWrites = source.match(/senha:\s+null/g) ?? [];
-    expect(nullPasswordWrites.length).toBeGreaterThanOrEqual(2);
-    expect(source).not.toMatch(/pending_orders[\s\S]{0,300}senha:\s+data\.senha/);
+    expect(source).not.toMatch(/senha:\s+(?:data\.)?senha/);
+    expect(source).not.toMatch(/password:\s+data\.password[\s\S]{0,300}pending_orders/);
+    expect(source).toContain("activation_secret_hash: activationSecretHash");
   });
 
   test("does not log card, password, token, or recovery-link values", () => {

@@ -33,7 +33,9 @@ function apiKey(): string {
 }
 
 export function supabaseUrl(): string {
-  return (import.meta.env?.VITE_SUPABASE_URL as string | undefined) ?? process.env.SUPABASE_URL ?? "";
+  return (
+    (import.meta.env?.VITE_SUPABASE_URL as string | undefined) ?? process.env.SUPABASE_URL ?? ""
+  );
 }
 
 export function supabaseKey(): string {
@@ -45,6 +47,27 @@ function admin() {
 }
 
 const onlyDigits = (s: string) => s.replace(/\D/g, "");
+const contatoClienteAsaas = (telefone: string) => {
+  const digits = onlyDigits(telefone);
+  const isMobile = digits.length === 11 || digits[2] === "9";
+  return isMobile ? { mobilePhone: digits } : { phone: digits };
+};
+const telefoneBR = z.string().refine((value) => /^\d{10,11}$/.test(onlyDigits(value)), {
+  message: "Informe um telefone brasileiro com DDD.",
+});
+
+type AsaasResponse = {
+  id?: string;
+  status?: string;
+  customer?: string;
+  externalReference?: string;
+  invoiceUrl?: string;
+  payload?: string;
+  encodedImage?: string;
+  expirationDate?: string;
+  email?: string;
+  errors?: Array<{ description?: string }>;
+};
 
 async function asaas(path: string, init: RequestInit) {
   const res = await fetch(`${base()}${path}`, {
@@ -56,7 +79,7 @@ async function asaas(path: string, init: RequestInit) {
       ...(init.headers ?? {}),
     },
   });
-  const json = (await res.json()) as any;
+  const json = (await res.json()) as AsaasResponse;
   if (!res.ok) {
     const msg = json?.errors?.[0]?.description ?? `Asaas ${res.status}`;
     throw new Error(msg);
@@ -67,6 +90,18 @@ async function asaas(path: string, init: RequestInit) {
 const PRECO = 97;
 const PAGO = new Set(["RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH"]);
 const RESEND_FROM = "MakersHub <equipe@makershub.app.br>";
+const ACTIVATION_TTL_MS = 30 * 60_000;
+
+function segredoAtivacao(): string {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function hashAtivacao(secret: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(secret));
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+}
 
 // Senha temporária criptograficamente aleatória (só existe em memória; o
 // usuário define a senha real pelo link de recuperação enviado por e-mail).
@@ -78,7 +113,10 @@ function senhaAleatoria(): string {
 
 // Gera link de definição de senha (Supabase Admin) e envia via Resend.
 // NUNCA retorna o link ao chamador nem o registra em logs.
-async function enviarLinkDefinicaoSenha(sb: ReturnType<typeof admin>, email: string, nome: string) {
+async function gerarLinkDefinicaoSenha(
+  sb: ReturnType<typeof admin>,
+  email: string,
+): Promise<string> {
   const { data, error } = await sb.auth.admin.generateLink({
     type: "recovery",
     email,
@@ -88,12 +126,18 @@ async function enviarLinkDefinicaoSenha(sb: ReturnType<typeof admin>, email: str
   });
   const link = data?.properties?.action_link;
   if (error || !link) {
-    console.error("[pagamento] falha ao gerar link de definição de senha:", error?.message ?? "sem link");
-    return;
+    throw new Error(error?.message ?? "Não foi possível gerar o link de ativação.");
   }
+  return link;
+}
+
+async function enviarLinkDefinicaoSenha(sb: ReturnType<typeof admin>, email: string, nome: string) {
+  const link = await gerarLinkDefinicaoSenha(sb, email);
   const rKey = process.env.RESEND_API_KEY ?? "";
   if (!rKey) {
-    console.error("[pagamento] RESEND_API_KEY não configurada; e-mail de definição de senha não enviado");
+    console.error(
+      "[pagamento] RESEND_API_KEY não configurada; e-mail de definição de senha não enviado",
+    );
     return;
   }
   const resp = await fetch("https://api.resend.com/emails", {
@@ -122,43 +166,57 @@ async function enviarLinkDefinicaoSenha(sb: ReturnType<typeof admin>, email: str
 }
 
 // Cria auth user + empresa + usuario via SQL function SECURITY DEFINER.
-// Chamada tanto pelo webhook (Pix) quanto direto no handler (Card).
-// `senha` é opcional: cartão (síncrono) usa a senha da requisição, em memória;
-// Pix usa senha temporária aleatória + link seguro de definição por e-mail.
+// Chamada tanto pelo webhook (Pix) quanto direto no handler (Card). A senha
+// real nunca passa pelo checkout: ambos usam ativação posterior à compra.
 export async function processarPagamento({
   paymentId,
   nome,
   email,
   empresa,
-  senha,
+  orderAlreadyClaimed = false,
 }: {
   paymentId: string;
   nome: string;
   email: string;
   empresa: string;
-  senha?: string;
+  orderAlreadyClaimed?: boolean;
 }) {
   const sb = admin();
 
-  // Idempotência: pedido já completado?
-  const { data: existing } = await sb
-    .from("pending_orders")
-    .select("status")
-    .eq("asaas_payment_id", paymentId)
-    .single();
-  if (existing?.status === "completed") return;
-
-  const senhaParaCriacao = senha?.trim() ? senha : senhaAleatoria();
+  // Claim atômico evita que webhook e polling criem usuários concorrentes.
+  const claim = orderAlreadyClaimed
+    ? { data: [{ asaas_payment_id: paymentId }], error: null }
+    : await sb.rpc("claim_pending_order", { p_payment_id: paymentId });
+  if (claim.error) throw new Error(claim.error.message);
+  if (!claim.data?.length) {
+    // Outro Worker pode ter obtido a lease. Aguarda sua conclusão por um
+    // intervalo curto para o cartão síncrono não devolver uma falsa falha.
+    for (let attempt = 0; attempt < 25; attempt++) {
+      const { data: current } = await sb
+        .from("pending_orders")
+        .select("status,error_msg")
+        .eq("asaas_payment_id", paymentId)
+        .single();
+      if (current?.status === "completed") return;
+      if (current?.status === "failed")
+        throw new Error(current.error_msg ?? "Falha ao ativar a conta.");
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+    throw new Error("Pagamento confirmado; a conta ainda está sendo ativada.");
+  }
 
   // Cria auth user
   const { data: created, error: authErr } = await sb.auth.admin.createUser({
     email,
-    password: senhaParaCriacao,
+    password: senhaAleatoria(),
     email_confirm: true,
     user_metadata: { nome },
   });
 
-  if (authErr || !created.user) {
+  const usuarioJaExiste = Boolean(
+    authErr?.code === "email_exists" || /already|registered|exists/i.test(authErr?.message ?? ""),
+  );
+  if ((authErr && !usuarioJaExiste) || (!created.user && !usuarioJaExiste)) {
     const msg = authErr?.message ?? "Erro ao criar usuário.";
     await sb
       .from("pending_orders")
@@ -169,7 +227,7 @@ export async function processarPagamento({
 
   // Cria empresa + usuario via função SECURITY DEFINER (bypasssa RLS)
   const { error: rpcErr } = await sb.rpc("criar_conta_paga", {
-    p_auth_user_id: created.user.id,
+    p_auth_user_id: created.user?.id ?? null,
     p_nome: nome,
     p_email: email,
     p_empresa_nome: empresa,
@@ -177,7 +235,7 @@ export async function processarPagamento({
   });
 
   if (rpcErr) {
-    await sb.auth.admin.deleteUser(created.user.id).catch(() => {});
+    if (created.user) await sb.auth.admin.deleteUser(created.user.id).catch(() => {});
     await sb
       .from("pending_orders")
       .update({ status: "failed", error_msg: rpcErr.message })
@@ -185,19 +243,22 @@ export async function processarPagamento({
     throw new Error(rpcErr.message);
   }
 
-  // Pix (sem senha da requisição): envia link seguro de definição de senha.
-  // Falha no envio não desfaz a conta — o usuário ainda pode usar
-  // "Esqueci minha senha" no login (mesmo fluxo de recuperação).
-  if (!senha) {
-    await enviarLinkDefinicaoSenha(sb, email, nome).catch((err) => {
-      console.error("[pagamento] erro ao enviar e-mail de definição de senha:", err instanceof Error ? err.message : err);
-    });
-  }
+  // Todo checkout configura a credencial somente depois da compra. O e-mail é
+  // o fallback caso o navegador seja fechado antes da ativação direta.
+  await enviarLinkDefinicaoSenha(sb, email, nome).catch((err) => {
+    console.error(
+      "[pagamento] erro ao enviar e-mail de definição de senha:",
+      err instanceof Error ? err.message : err,
+    );
+  });
 
   // Best-effort: a compra já foi confirmada e provisionada. Falha na
   // plataforma de anúncios não pode reverter nem atrasar a conta do cliente.
   await trackMetaPurchase({ paymentId, email }).catch((err) => {
-    console.error("[pagamento] erro ao registrar Purchase na Meta:", err instanceof Error ? err.message : err);
+    console.error(
+      "[pagamento] erro ao registrar Purchase na Meta:",
+      err instanceof Error ? err.message : err,
+    );
   });
 }
 
@@ -218,12 +279,11 @@ async function liberarEmpresa(sb: ReturnType<typeof admin>, userId: string) {
 export const iniciarPix = createServerFn({ method: "POST" })
   .inputValidator(
     z.object({
-      nome:     z.string().min(1),
-      email:    z.string().email(),
+      nome: z.string().min(1),
+      email: z.string().email(),
       cpfCnpj: z.string().min(11),
-      empresa:  z.string().min(1),
-      // SEM senha: Pix é assíncrono e a senha nunca é enviada nem persistida.
-      // Após a confirmação, o usuário define a senha por link seguro (e-mail).
+      empresa: z.string().min(1),
+      telefone: telefoneBR,
     }),
   )
   .handler(async ({ data }) => {
@@ -231,11 +291,19 @@ export const iniciarPix = createServerFn({ method: "POST" })
     rateLimit("checkout-pix", 10, 60 * 60_000);
     const sb = admin();
     const hoje = new Date().toISOString().slice(0, 10);
+    const activationSecret = segredoAtivacao();
+    const activationSecretHash = await hashAtivacao(activationSecret);
 
     const cliente = await asaas("/customers", {
       method: "POST",
-      body: JSON.stringify({ name: data.nome, cpfCnpj: onlyDigits(data.cpfCnpj), email: data.email }),
+      body: JSON.stringify({
+        name: data.nome,
+        cpfCnpj: onlyDigits(data.cpfCnpj),
+        email: data.email,
+        ...contatoClienteAsaas(data.telefone),
+      }),
     });
+    if (!cliente.id) throw new Error("Asaas não retornou o cliente da cobrança.");
 
     const cobranca = await asaas("/payments", {
       method: "POST",
@@ -247,39 +315,45 @@ export const iniciarPix = createServerFn({ method: "POST" })
         description: "MakersHub — acesso anual",
       }),
     });
+    if (!cobranca.id) throw new Error("Asaas não retornou o identificador do pagamento.");
 
     // CRÍTICO: persiste o pedido ANTES de buscar o QR. Se o QR falhar (ex.: conta
     // Asaas sem chave Pix), a cobrança já existe e o cliente pode pagar pelo
     // invoiceUrl/e-mail — o webhook acha este pedido e provisiona a conta.
     await sb.from("pending_orders").insert({
       asaas_payment_id: cobranca.id,
-      nome:             data.nome.trim(),
-      email:            data.email.trim(),
-      empresa_nome:     data.empresa.trim(),
-      cpf:              onlyDigits(data.cpfCnpj),
-      senha:            null, // NUNCA armazenar senha em pending_orders
-      billing_type:     "PIX",
-      status:           "pending",
+      nome: data.nome.trim(),
+      email: data.email.trim(),
+      empresa_nome: data.empresa.trim(),
+      cpf: onlyDigits(data.cpfCnpj),
+      billing_type: "PIX",
+      status: "pending",
+      activation_secret_hash: activationSecretHash,
+      activation_expires_at: new Date(Date.now() + ACTIVATION_TTL_MS).toISOString(),
     });
 
     // QR Code é best-effort — não pode derrubar o checkout
-    let brCode = "", brCodeBase64 = "", expiresAt = "", qrErro: string | null = null;
+    let brCode = "",
+      brCodeBase64 = "",
+      expiresAt = "",
+      qrErro: string | null = null;
     try {
       const qr = await asaas(`/payments/${cobranca.id}/pixQrCode`, { method: "GET" });
-      brCode       = (qr.payload as string) ?? "";
+      brCode = (qr.payload as string) ?? "";
       brCodeBase64 = qr.encodedImage ? `data:image/png;base64,${qr.encodedImage}` : "";
-      expiresAt    = (qr.expirationDate as string) ?? "";
+      expiresAt = (qr.expirationDate as string) ?? "";
     } catch (e) {
       qrErro = e instanceof Error ? e.message : "QR Code indisponível";
     }
 
     return {
-      id:           cobranca.id as string,
+      id: cobranca.id as string,
       brCode,
       brCodeBase64,
       expiresAt,
-      invoiceUrl:   (cobranca.invoiceUrl as string) ?? "",
+      invoiceUrl: (cobranca.invoiceUrl as string) ?? "",
       qrErro,
+      activationSecret,
     };
   });
 
@@ -299,37 +373,108 @@ export const checarPix = createServerFn({ method: "POST" })
 // pendente, confere o status direto na Asaas; se já estiver pago,
 // processa na hora (processarPagamento é idempotente).
 export const checarPedido = createServerFn({ method: "POST" })
-  .inputValidator(z.object({ paymentId: z.string() }))
+  .inputValidator(z.object({ paymentId: z.string(), activationSecret: z.string().length(64) }))
   .handler(async ({ data }) => {
     const sb = admin();
+    const activationSecretHash = await hashAtivacao(data.activationSecret);
     const { data: order } = await sb
       .from("pending_orders")
       .select("*")
       .eq("asaas_payment_id", data.paymentId)
+      .eq("activation_secret_hash", activationSecretHash)
       .single();
+
+    if (!order) throw new Error("Sessão de checkout inválida.");
 
     if (order && order.status === "pending") {
       try {
         const cobranca = await asaas(`/payments/${data.paymentId}`, { method: "GET" });
-        if (PAGO.has(cobranca.status)) {
+        if (PAGO.has(cobranca.status ?? "")) {
           await processarPagamento({
             paymentId: order.asaas_payment_id,
-            nome:      order.nome,
-            email:     order.email,
-            empresa:   order.empresa_nome,
-            senha:     order.senha ?? undefined,
+            nome: order.nome,
+            email: order.email,
+            empresa: order.empresa_nome,
           });
           return { status: "completed" as const, error: null };
         }
       } catch (err) {
-        console.error("[checarPedido] falha ao reconferir na Asaas:", err instanceof Error ? err.message : err);
+        console.error(
+          "[checarPedido] falha ao reconferir na Asaas:",
+          err instanceof Error ? err.message : err,
+        );
       }
     }
 
     return {
       status: (order?.status ?? "pending") as "pending" | "completed" | "failed",
-      error:  order?.error_msg ?? null,
+      error: order?.error_msg ?? null,
     };
+  });
+
+// Define a credencial no pós-compra. O segredo é consumido antes da alteração;
+// se o Auth falhar, o link de recuperação enviado por e-mail continua válido.
+export const concluirAtivacao = createServerFn({ method: "POST" })
+  .inputValidator(
+    z.object({
+      paymentId: z.string(),
+      activationSecret: z.string().length(64),
+      password: z.string().min(8).max(128),
+    }),
+  )
+  .handler(async ({ data }) => {
+    rateLimit("checkout-activation", 20, 60 * 60_000);
+    const sb = admin();
+    const activationSecretHash = await hashAtivacao(data.activationSecret);
+    const { data: order } = await sb
+      .from("pending_orders")
+      .select("auth_user_id,email,status,activation_expires_at,activation_consumed_at")
+      .eq("asaas_payment_id", data.paymentId)
+      .eq("activation_secret_hash", activationSecretHash)
+      .single();
+
+    if (!order || order.status !== "completed") throw new Error("Pagamento ainda não confirmado.");
+    if (order.activation_consumed_at) throw new Error("Este link de ativação já foi utilizado.");
+    if (new Date(order.activation_expires_at).getTime() <= Date.now()) {
+      throw new Error("A ativação direta expirou. Use o link enviado por e-mail.");
+    }
+    if (!order.auth_user_id) throw new Error("Conta ainda não provisionada.");
+
+    const { data: consumed, error } = await sb
+      .from("pending_orders")
+      .update({ activation_consumed_at: new Date().toISOString() })
+      .eq("asaas_payment_id", data.paymentId)
+      .eq("activation_secret_hash", activationSecretHash)
+      .is("activation_consumed_at", null)
+      .select("id")
+      .single();
+    if (error || !consumed) throw new Error("Este link de ativação já foi utilizado.");
+    const { error: passwordError } = await sb.auth.admin.updateUserById(order.auth_user_id, {
+      password: data.password,
+    });
+    if (passwordError)
+      throw new Error("Não foi possível definir a senha. Use o link enviado por e-mail.");
+    return { completed: true as const };
+  });
+
+export const reenviarAtivacao = createServerFn({ method: "POST" })
+  .inputValidator(z.object({ paymentId: z.string(), activationSecret: z.string().length(64) }))
+  .handler(async ({ data }) => {
+    rateLimit("checkout-activation-resend", 3, 60 * 60_000);
+    const sb = admin();
+    const activationSecretHash = await hashAtivacao(data.activationSecret);
+    const { data: order } = await sb
+      .from("pending_orders")
+      .select("nome,email,status,activation_expires_at")
+      .eq("asaas_payment_id", data.paymentId)
+      .eq("activation_secret_hash", activationSecretHash)
+      .single();
+    if (!order || order.status !== "completed") throw new Error("Pagamento ainda não confirmado.");
+    if (new Date(order.activation_expires_at).getTime() <= Date.now()) {
+      throw new Error("Sessão expirada. Solicite uma nova senha pela tela de login.");
+    }
+    await enviarLinkDefinicaoSenha(sb, order.email, order.nome);
+    return { sent: true as const };
   });
 
 // ─────────────────── CHECKOUT: CARTÃO ───────────────────
@@ -339,24 +484,23 @@ export const checarPedido = createServerFn({ method: "POST" })
 export const pagarCartao = createServerFn({ method: "POST" })
   .inputValidator(
     z.object({
-      nome:     z.string().min(1),
-      email:    z.string().email(),
+      nome: z.string().min(1),
+      email: z.string().email(),
       cpfCnpj: z.string().min(11),
-      empresa:  z.string().min(1),
-      senha:    z.string().min(6), // cartão é síncrono: senha só em memória nesta requisição
+      empresa: z.string().min(1),
+      telefone: telefoneBR,
       // SEM userId: pagarCartao é EXCLUSIVAMENTE checkout de conta nova.
       // Upgrade de conta existente é outro fluxo (finalizarPix, autenticado).
       card: z.object({
-        holderName:  z.string().min(1),
-        number:      z.string().min(12),
+        holderName: z.string().min(1),
+        number: z.string().min(12),
         expiryMonth: z.string().min(1),
-        expiryYear:  z.string().min(2),
-        ccv:         z.string().min(3),
+        expiryYear: z.string().min(2),
+        ccv: z.string().min(3),
       }),
       holder: z.object({
-        postalCode:    z.string().min(8),
+        postalCode: z.string().min(8),
         addressNumber: z.string().min(1),
-        phone:         z.string().min(8),
       }),
     }),
   )
@@ -365,66 +509,83 @@ export const pagarCartao = createServerFn({ method: "POST" })
     rateLimit("checkout-cartao", 5, 60 * 60_000);
     const remoteIp = getRequestIP({ xForwardedFor: true }) ?? "0.0.0.0";
     const sb = admin();
+    const activationSecret = segredoAtivacao();
+    const activationSecretHash = await hashAtivacao(activationSecret);
 
     const cliente = await asaas("/customers", {
       method: "POST",
-      body: JSON.stringify({ name: data.nome, cpfCnpj: onlyDigits(data.cpfCnpj), email: data.email }),
+      body: JSON.stringify({
+        name: data.nome,
+        cpfCnpj: onlyDigits(data.cpfCnpj),
+        email: data.email,
+        ...contatoClienteAsaas(data.telefone),
+      }),
     });
+    if (!cliente.id) throw new Error("Asaas não retornou o cliente da cobrança.");
 
     const hoje = new Date().toISOString().slice(0, 10);
     const cobranca = await asaas("/payments", {
       method: "POST",
       body: JSON.stringify({
-        customer:    cliente.id,
+        customer: cliente.id,
         billingType: "CREDIT_CARD",
-        value:       PRECO,
-        dueDate:     hoje,
+        value: PRECO,
+        dueDate: hoje,
         description: "MakersHub — acesso anual",
         remoteIp,
         creditCard: {
-          holderName:  data.card.holderName,
-          number:      onlyDigits(data.card.number),
+          holderName: data.card.holderName,
+          number: onlyDigits(data.card.number),
           expiryMonth: data.card.expiryMonth.padStart(2, "0"),
-          expiryYear:  data.card.expiryYear.length === 2 ? `20${data.card.expiryYear}` : data.card.expiryYear,
-          ccv:         data.card.ccv,
+          expiryYear:
+            data.card.expiryYear.length === 2 ? `20${data.card.expiryYear}` : data.card.expiryYear,
+          ccv: data.card.ccv,
         },
         creditCardHolderInfo: {
-          name:          data.card.holderName,
-          email:         data.email,
-          cpfCnpj:       onlyDigits(data.cpfCnpj),
-          postalCode:    onlyDigits(data.holder.postalCode),
+          name: data.card.holderName,
+          email: data.email,
+          cpfCnpj: onlyDigits(data.cpfCnpj),
+          postalCode: onlyDigits(data.holder.postalCode),
           addressNumber: data.holder.addressNumber,
-          phone:         onlyDigits(data.holder.phone),
+          phone: onlyDigits(data.telefone),
         },
       }),
     });
+    if (!cobranca.id) throw new Error("Asaas não retornou o identificador do pagamento.");
 
-    if (!PAGO.has(cobranca.status)) {
+    if (!PAGO.has(cobranca.status ?? "")) {
       throw new Error("Cartão não aprovado. Tente outro cartão ou use Pix.");
     }
 
     // Registro do pedido (usado para auditoria; webhook será idempotente)
     await sb.from("pending_orders").upsert({
       asaas_payment_id: cobranca.id,
-      nome:             data.nome.trim(),
-      email:            data.email.trim(),
-      empresa_nome:     data.empresa.trim(),
-      cpf:              onlyDigits(data.cpfCnpj),
-      senha:            null, // não precisa armazenar — criamos a conta agora
-      billing_type:     "CREDIT_CARD",
-      status:           "pending",
+      nome: data.nome.trim(),
+      email: data.email.trim(),
+      empresa_nome: data.empresa.trim(),
+      cpf: onlyDigits(data.cpfCnpj),
+      billing_type: "CREDIT_CARD",
+      status: "pending",
+      activation_secret_hash: activationSecretHash,
+      activation_expires_at: new Date(Date.now() + ACTIVATION_TTL_MS).toISOString(),
     });
 
     // Cria conta imediatamente (pagamento síncrono confirmado)
     await processarPagamento({
       paymentId: cobranca.id,
-      nome:      data.nome.trim(),
-      email:     data.email.trim(),
-      empresa:   data.empresa.trim(),
-      senha:     data.senha,
+      nome: data.nome.trim(),
+      email: data.email.trim(),
+      empresa: data.empresa.trim(),
+    }).catch((error) => {
+      // A cobrança já foi aprovada: não induzimos uma segunda tentativa de
+      // pagamento. O navegador acompanha o pedido e o webhook pode retentar.
+      console.error(
+        "[checkout-cartao] pagamento confirmado, provisionamento pendente:",
+        error instanceof Error ? error.message : error,
+      );
     });
 
-    return { email: data.email, paymentId: cobranca.id as string };
+    return { paymentId: cobranca.id as string, activationSecret };
   });
 
 // ─────────────────── UPGRADE: PIX ───────────────────
@@ -434,7 +595,10 @@ export const pagarCartao = createServerFn({ method: "POST" })
 
 // E-mail do usuário autenticado, derivado só da sessão validada (claims do
 // JWT; fallback: Admin API). NUNCA do payload do navegador.
-async function emailDaSessao(context: { userId: string; claims: Record<string, unknown> }): Promise<string> {
+async function emailDaSessao(context: {
+  userId: string;
+  claims: Record<string, unknown>;
+}): Promise<string> {
   const fromClaims = typeof context.claims?.email === "string" ? context.claims.email : undefined;
   if (fromClaims) return fromClaims.toLowerCase();
   const { data: got } = await admin().auth.admin.getUserById(context.userId);
@@ -461,31 +625,34 @@ export const criarPix = createServerFn({ method: "POST" })
     const cobranca = await asaas("/payments", {
       method: "POST",
       body: JSON.stringify({
-        customer:    cliente.id,
+        customer: cliente.id,
         billingType: "PIX",
-        value:       PRECO,
-        dueDate:     hoje,
+        value: PRECO,
+        dueDate: hoje,
         description: "MakersHub — acesso anual",
         // Vínculo forte cobrança↔usuário: finalizarPix confere este campo
         // antes de liberar (mais forte que o match por e-mail).
         externalReference: context.userId,
       }),
     });
-    let brCode = "", brCodeBase64 = "", expiresAt = "", qrErro: string | null = null;
+    let brCode = "",
+      brCodeBase64 = "",
+      expiresAt = "",
+      qrErro: string | null = null;
     try {
       const qr = await asaas(`/payments/${cobranca.id}/pixQrCode`, { method: "GET" });
-      brCode       = (qr.payload as string) ?? "";
+      brCode = (qr.payload as string) ?? "";
       brCodeBase64 = qr.encodedImage ? `data:image/png;base64,${qr.encodedImage}` : "";
-      expiresAt    = (qr.expirationDate as string) ?? "";
+      expiresAt = (qr.expirationDate as string) ?? "";
     } catch (e) {
       qrErro = e instanceof Error ? e.message : "QR Code indisponível";
     }
     return {
-      id:           cobranca.id as string,
+      id: cobranca.id as string,
       brCode,
       brCodeBase64,
       expiresAt,
-      invoiceUrl:   (cobranca.invoiceUrl as string) ?? "",
+      invoiceUrl: (cobranca.invoiceUrl as string) ?? "",
       qrErro,
     };
   });
@@ -499,7 +666,7 @@ export const finalizarPix = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     // 1. Cobrança precisa existir e estar paga no Asaas
     const cobranca = await asaas(`/payments/${data.chargeId}`, { method: "GET" });
-    if (!PAGO.has(cobranca.status)) throw new Error("Pagamento ainda não confirmado.");
+    if (!PAGO.has(cobranca.status ?? "")) throw new Error("Pagamento ainda não confirmado.");
 
     // 2a. Vínculo forte: cobranças criadas por criarPix carregam o userId no
     //     externalReference — se presente, precisa ser o usuário autenticado.
@@ -512,6 +679,7 @@ export const finalizarPix = createServerFn({ method: "POST" })
     //     Cobre cobranças antigas sem externalReference — uma cobrança de
     //     terceiro não pode liberar esta conta, nem o inverso.
     const email = await emailDaSessao(context);
+    if (!cobranca.customer) throw new Error("Cobrança sem cliente associado.");
     const cliente = await asaas(`/customers/${cobranca.customer}`, { method: "GET" });
     const emailCobranca = typeof cliente?.email === "string" ? cliente.email.toLowerCase() : "";
     if (!emailCobranca || emailCobranca !== email) {

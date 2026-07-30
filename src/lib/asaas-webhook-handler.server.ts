@@ -38,6 +38,7 @@ export async function handleCanonicalAsaasWebhook(
         nome: order.nome,
         email: order.email,
         empresa: order.empresa_nome,
+        orderAlreadyClaimed: true,
       });
     },
     schedule,
