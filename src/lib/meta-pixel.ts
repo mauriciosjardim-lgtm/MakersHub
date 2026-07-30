@@ -66,3 +66,23 @@ export function trackMetaPurchaseBrowser(paymentId: string): void {
   localStorage.setItem(storageKey, "1");
   window.fbq?.("track", "Purchase", CHECKOUT_DATA, { eventID: eventId });
 }
+
+type CheckoutStep =
+  | "form_validated"
+  | "payment_started"
+  | "payment_failed"
+  | "payment_confirmed"
+  | "activation_opened"
+  | "activation_completed";
+
+// Eventos de diagnóstico do funil, sem dados pessoais. São custom events do
+// Pixel e não alteram InitiateCheckout/Purchase nem sua deduplicação CAPI.
+export function trackCheckoutStep(step: CheckoutStep, paymentMethod?: "pix" | "cartao"): void {
+  const key = `mh_checkout_step_${step}_${paymentMethod ?? "none"}`;
+  if (sessionStorage.getItem(key)) return;
+  sessionStorage.setItem(key, "1");
+  window.fbq?.("trackCustom", "MakersHubCheckoutStep", {
+    step,
+    ...(paymentMethod ? { payment_method: paymentMethod } : {}),
+  });
+}

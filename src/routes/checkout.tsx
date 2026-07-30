@@ -1,6 +1,15 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft2, TickCircle, ShieldTick, Flash, Eye, EyeSlash, CloseCircle, Lock1, InfoCircle } from "iconsax-react";
+import {
+  ArrowLeft2,
+  TickCircle,
+  ShieldTick,
+  Flash,
+  Lock1,
+  InfoCircle,
+  Eye,
+  EyeSlash,
+} from "iconsax-react";
 import { LogoMakersHub } from "@/components/logo-makershub";
 import { AuthBackground } from "@/components/auth-background";
 import { PixBox } from "@/components/pix-box";
@@ -8,9 +17,19 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import {
+  iniciarPix,
+  checarPedido,
+  concluirAtivacao,
+  pagarCartao,
+  reenviarAtivacao,
+} from "@/lib/api/asaas.functions";
+import {
+  trackCheckoutStep,
+  trackMetaInitiateCheckout,
+  trackMetaPurchaseBrowser,
+} from "@/lib/meta-pixel";
 import { useAuth } from "@/lib/auth";
-import { iniciarPix, checarPedido, pagarCartao } from "@/lib/api/asaas.functions";
-import { trackMetaInitiateCheckout, trackMetaPurchaseBrowser } from "@/lib/meta-pixel";
 import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
 
 const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY ?? "";
@@ -24,7 +43,15 @@ const INCLUI = [
   "1 ano de acesso completo",
 ];
 
-type Charge = { id: string; brCode: string; brCodeBase64: string; expiresAt: string; invoiceUrl?: string; qrErro?: string | null };
+type Charge = {
+  id: string;
+  brCode: string;
+  brCodeBase64: string;
+  expiresAt: string;
+  invoiceUrl?: string;
+  qrErro?: string | null;
+  activationSecret: string;
+};
 
 // ── máscaras ──────────────────────────────────────────────────────────────────
 
@@ -72,21 +99,34 @@ function detectarBandeira(num: string): Bandeira {
 }
 
 function IconBandeira({ bandeira }: { bandeira: Bandeira }) {
-  if (bandeira === "visa") return (
-    <span className="font-black italic text-white text-[13px] tracking-tighter" style={{ fontFamily: "serif" }}>VISA</span>
-  );
-  if (bandeira === "mastercard") return (
-    <span className="flex items-center">
-      <span className="h-5 w-5 rounded-full bg-red-500 opacity-90" />
-      <span className="-ml-2.5 h-5 w-5 rounded-full bg-orange-400 opacity-90" />
-    </span>
-  );
-  if (bandeira === "amex") return (
-    <span className="rounded bg-blue-700 px-1.5 py-0.5 text-[9px] font-bold tracking-widest text-white">AMEX</span>
-  );
-  if (bandeira === "elo") return (
-    <span className="rounded bg-yellow-400 px-1.5 py-0.5 text-[9px] font-black text-black">ELO</span>
-  );
+  if (bandeira === "visa")
+    return (
+      <span
+        className="font-black italic text-white text-[13px] tracking-tighter"
+        style={{ fontFamily: "serif" }}
+      >
+        VISA
+      </span>
+    );
+  if (bandeira === "mastercard")
+    return (
+      <span className="flex items-center">
+        <span className="h-5 w-5 rounded-full bg-red-500 opacity-90" />
+        <span className="-ml-2.5 h-5 w-5 rounded-full bg-orange-400 opacity-90" />
+      </span>
+    );
+  if (bandeira === "amex")
+    return (
+      <span className="rounded bg-blue-700 px-1.5 py-0.5 text-[9px] font-bold tracking-widest text-white">
+        AMEX
+      </span>
+    );
+  if (bandeira === "elo")
+    return (
+      <span className="rounded bg-yellow-400 px-1.5 py-0.5 text-[9px] font-black text-black">
+        ELO
+      </span>
+    );
   return (
     <span className="flex items-center opacity-30">
       <span className="h-5 w-5 rounded-full bg-white/50" />
@@ -97,11 +137,21 @@ function IconBandeira({ bandeira }: { bandeira: Bandeira }) {
 
 // ── preview do cartão ─────────────────────────────────────────────────────────
 
-function CardPreview({ number, name, expiry, bandeira }: { number: string; name: string; expiry: string; bandeira: Bandeira }) {
+function CardPreview({
+  number,
+  name,
+  expiry,
+  bandeira,
+}: {
+  number: string;
+  name: string;
+  expiry: string;
+  bandeira: Bandeira;
+}) {
   const digits = number.replace(/\s/g, "");
   const groups = digits.padEnd(16, " ").match(/.{1,4}/g) ?? ["    ", "    ", "    ", "    "];
   const displayName = name.trim() || "SEU NOME";
-  const displayExp  = expiry || "MM/AA";
+  const displayExp = expiry || "MM/AA";
 
   return (
     <div
@@ -109,8 +159,13 @@ function CardPreview({ number, name, expiry, bandeira }: { number: string; name:
       style={{ background: "linear-gradient(135deg, #0d0d0d 0%, #111827 40%, #0a1628 100%)" }}
     >
       {/* reflexo holográfico */}
-      <div className="pointer-events-none absolute inset-0 opacity-40"
-        style={{ background: "linear-gradient(115deg, transparent 40%, rgba(144,248,38,0.06) 50%, transparent 60%)" }} />
+      <div
+        className="pointer-events-none absolute inset-0 opacity-40"
+        style={{
+          background:
+            "linear-gradient(115deg, transparent 40%, rgba(144,248,38,0.06) 50%, transparent 60%)",
+        }}
+      />
       <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-[#90F826]/[0.04] blur-3xl" />
       <div className="pointer-events-none absolute -bottom-12 -left-12 h-40 w-40 rounded-full bg-blue-500/[0.06] blur-2xl" />
       {/* borda sutil */}
@@ -144,7 +199,9 @@ function CardPreview({ number, name, expiry, bandeira }: { number: string; name:
       <div className="mt-2.5 flex items-end justify-between">
         <div>
           <p className="text-[8px] uppercase tracking-[0.15em] text-white/30">Titular</p>
-          <p className="mt-0.5 truncate max-w-[160px] text-[11px] font-medium uppercase tracking-wider text-white/75">{displayName}</p>
+          <p className="mt-0.5 truncate max-w-[160px] text-[11px] font-medium uppercase tracking-wider text-white/75">
+            {displayName}
+          </p>
         </div>
         <div className="text-right">
           <p className="text-[8px] uppercase tracking-[0.15em] text-white/30">Validade</p>
@@ -155,55 +212,19 @@ function CardPreview({ number, name, expiry, bandeira }: { number: string; name:
   );
 }
 
-// ── validação de senha ────────────────────────────────────────────────────────
-
-const REGRAS = [
-  { id: "min", label: "Mínimo 8 caracteres", test: (s: string) => s.length >= 8 },
-  { id: "upper", label: "Letra maiúscula", test: (s: string) => /[A-Z]/.test(s) },
-  { id: "lower", label: "Letra minúscula", test: (s: string) => /[a-z]/.test(s) },
-  { id: "num", label: "Número", test: (s: string) => /[0-9]/.test(s) },
-  { id: "special", label: "Caractere especial (!@#...)", test: (s: string) => /[^A-Za-z0-9]/.test(s) },
-];
-
-function senhaValida(s: string) {
-  return REGRAS.every(r => r.test(s));
-}
-
-function RegrasSenha({ senha, visivel }: { senha: string; visivel: boolean }) {
-  if (!visivel) return null;
-  return (
-    <ul className="mt-2 space-y-1">
-      {REGRAS.map(r => {
-        const ok = r.test(senha);
-        return (
-          <li key={r.id} className={cn("flex items-center gap-2 text-[11px] transition-colors", ok ? "text-[#90F826]" : "text-white/40")}>
-            {ok
-              ? <TickCircle size={13} color="#90F826" variant="Bold" />
-              : <CloseCircle size={13} color="currentColor" variant="Linear" />}
-            {r.label}
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
-
 // ── componente principal ──────────────────────────────────────────────────────
 
 function Checkout() {
   const navigate = useNavigate();
   const { signIn } = useAuth();
 
-  // dados da conta
+  // dados da compra
   const [nome, setNome] = useState("");
   const [empresa, setEmpresa] = useState("");
   const [email, setEmail] = useState("");
   const [cpf, setCpf] = useState("");
-  const [senha, setSenha] = useState("");
-  const [confirmarSenha, setConfirmarSenha] = useState("");
-  const [mostrarSenha, setMostrarSenha] = useState(false);
-  const [mostrarConfirmar, setMostrarConfirmar] = useState(false);
-  const [senhaFoco, setSenhaFoco] = useState(false);
+  const [telefone, setTelefone] = useState("");
+  const [aceitouTermos, setAceitouTermos] = useState(false);
 
   const [aba, setAba] = useState<"pix" | "cartao">("pix");
   const [erro, setErro] = useState<string | null>(null);
@@ -213,6 +234,18 @@ function Checkout() {
   const [criando, setCriando] = useState(false);
   const [aguardandoAtivacao, setAguardandoAtivacao] = useState(false);
   const [contaCriada, setContaCriada] = useState(false);
+  const [pedidoAtual, setPedidoAtual] = useState<{
+    paymentId: string;
+    activationSecret: string;
+  } | null>(null);
+  const [ativacao, setAtivacao] = useState<{ paymentId: string; activationSecret: string } | null>(
+    null,
+  );
+  const [senha, setSenha] = useState("");
+  const [confirmarSenha, setConfirmarSenha] = useState("");
+  const [mostrarSenha, setMostrarSenha] = useState(false);
+  const [ativando, setAtivando] = useState(false);
+  const [reenviando, setReenviando] = useState(false);
 
   // cartão
   const [cardNumber, setCardNumber] = useState("");
@@ -221,7 +254,6 @@ function Checkout() {
   const [cvv, setCvv] = useState("");
   const [cep, setCep] = useState("");
   const [numero, setNumero] = useState("");
-  const [telefone, setTelefone] = useState("");
   const [pagando, setPagando] = useState(false);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const turnstileRef = useRef<TurnstileInstance | null>(null);
@@ -233,38 +265,99 @@ function Checkout() {
   function validarConta(): string | null {
     if (!nome.trim()) return "Informe seu nome completo.";
     if (!empresa.trim()) return "Informe o nome da sua produtora.";
-    if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return "Informe um e-mail válido.";
+    if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+      return "Informe um e-mail válido.";
     if (cpf.replace(/\D/g, "").length !== 11) return "Informe um CPF válido (11 dígitos).";
-    if (!senhaValida(senha)) return "A senha não atende todos os requisitos de segurança.";
-    if (senha !== confirmarSenha) return "As senhas não coincidem.";
+    if (telefone.replace(/\D/g, "").length < 10) return "Informe um telefone com DDD.";
+    if (!aceitouTermos) return "Aceite os Termos de Uso e a Política de Privacidade.";
     return null;
+  }
+
+  async function abrirAtivacao(paymentId: string, activationSecret: string) {
+    trackCheckoutStep("activation_opened");
+    setPagando(false);
+    setAguardandoAtivacao(false);
+    setAtivacao({ paymentId, activationSecret });
+  }
+
+  async function finalizarAtivacao(e: React.FormEvent) {
+    e.preventDefault();
+    if (!ativacao) return;
+    if (senha.length < 8) {
+      setErro("A senha precisa ter pelo menos 8 caracteres.");
+      return;
+    }
+    if (senha !== confirmarSenha) {
+      setErro("As senhas não coincidem.");
+      return;
+    }
+    setErro(null);
+    setAtivando(true);
+    try {
+      await concluirAtivacao({ data: { ...ativacao, password: senha } });
+      trackCheckoutStep("activation_completed");
+      const { error } = await signIn(email.trim(), senha);
+      if (error) navigate({ to: "/login" });
+      else window.location.assign("/");
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Use o link de ativação enviado por e-mail.");
+      setContaCriada(true);
+      setAtivacao(null);
+    } finally {
+      setAtivando(false);
+    }
+  }
+
+  async function reenviarEmailAtivacao() {
+    if (!pedidoAtual) return;
+    setReenviando(true);
+    setErro(null);
+    try {
+      await reenviarAtivacao({ data: pedidoAtual });
+      setErro("Novo link enviado. Confira também a caixa de spam.");
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Não foi possível reenviar agora.");
+    } finally {
+      setReenviando(false);
+    }
   }
 
   async function gerarPix(e: React.FormEvent) {
     e.preventDefault();
     const v = validarConta();
-    if (v) { setErro(v); return; }
+    if (v) {
+      setErro(v);
+      return;
+    }
+    trackCheckoutStep("form_validated");
     setErro(null);
     setCriando(true);
     try {
-      // Pix nunca envia a senha: após a confirmação o usuário recebe um link
-      // seguro por e-mail para definir a senha (nada fica salvo em texto puro).
+      trackCheckoutStep("payment_started", "pix");
       const c = await iniciarPix({
-        data: { nome: nome.trim(), email: email.trim(), cpfCnpj: cpf, empresa: empresa.trim() },
+        data: {
+          nome: nome.trim(),
+          email: email.trim(),
+          cpfCnpj: cpf,
+          empresa: empresa.trim(),
+          telefone,
+        },
       });
       setCharge(c);
+      setPedidoAtual({ paymentId: c.id, activationSecret: c.activationSecret });
     } catch (err) {
+      trackCheckoutStep("payment_failed", "pix");
       setErro(err instanceof Error ? err.message : "Erro ao gerar o Pix.");
     } finally {
       setCriando(false);
     }
   }
 
-  // Chamado pelo PixBox quando detecta pagamento confirmado no Asaas.
-  // Aguarda o webhook criar a conta. SEM login automático: a senha nunca foi
-  // enviada — o usuário define a dela pelo link seguro enviado por e-mail.
-  async function aoPagarPix() {
-    if (!charge) return;
+  async function aguardarProvisionamento(
+    paymentId: string,
+    activationSecret: string,
+    method: "pix" | "cartao",
+  ) {
     setAguardandoAtivacao(true);
     setErro(null);
 
@@ -272,12 +365,26 @@ function Checkout() {
     const TIMEOUT = 60_000; // 60s aguardando webhook
 
     const checarAtivacao = async () => {
-      const { status, error: errMsg } = await checarPedido({ data: { paymentId: charge.id } });
-
-      if (status === "completed") {
-        trackMetaPurchaseBrowser(charge.id);
+      let result: Awaited<ReturnType<typeof checarPedido>>;
+      try {
+        result = await checarPedido({ data: { paymentId, activationSecret } });
+      } catch (err) {
+        if (Date.now() - inicio <= TIMEOUT) {
+          setTimeout(checarAtivacao, 2000);
+          return;
+        }
+        setErro(err instanceof Error ? err.message : "Não foi possível confirmar a ativação.");
         setAguardandoAtivacao(false);
         setContaCriada(true);
+        return;
+      }
+      const { status, error: errMsg } = result;
+
+      if (status === "completed") {
+        trackMetaPurchaseBrowser(paymentId);
+        trackCheckoutStep("payment_confirmed", method);
+        setAguardandoAtivacao(false);
+        await abrirAtivacao(paymentId, activationSecret);
         return;
       }
 
@@ -301,18 +408,45 @@ function Checkout() {
     checarAtivacao();
   }
 
+  // Chamado pelo PixBox quando detecta pagamento confirmado no Asaas.
+  async function aoPagarPix() {
+    if (!charge) return;
+    await aguardarProvisionamento(charge.id, charge.activationSecret, "pix");
+  }
+
   async function pagarComCartao(e: React.FormEvent) {
     e.preventDefault();
     const v = validarConta();
-    if (v) { setErro(v); return; }
-    const [mm, aa] = validade.split("/").map(s => s.trim());
-    if (!mm || !aa || mm.length !== 2 || aa.length !== 2) { setErro("Validade inválida. Use MM/AA (ex: 06/30)."); return; }
-    if (cardNumber.replace(/\D/g, "").length < 13) { setErro("Número do cartão inválido."); return; }
-    if (!cardName.trim()) { setErro("Informe o nome impresso no cartão."); return; }
-    if (cvv.length < 3) { setErro("CVV inválido."); return; }
-    if (cep.replace(/\D/g, "").length !== 8) { setErro("CEP inválido."); return; }
-    if (!numero.trim()) { setErro("Informe o número do endereço."); return; }
-    if (telefone.replace(/\D/g, "").length < 10) { setErro("Informe um telefone com DDD."); return; }
+    if (v) {
+      setErro(v);
+      return;
+    }
+    trackCheckoutStep("form_validated");
+    const [mm, aa] = validade.split("/").map((s) => s.trim());
+    if (!mm || !aa || mm.length !== 2 || aa.length !== 2) {
+      setErro("Validade inválida. Use MM/AA (ex: 06/30).");
+      return;
+    }
+    if (cardNumber.replace(/\D/g, "").length < 13) {
+      setErro("Número do cartão inválido.");
+      return;
+    }
+    if (!cardName.trim()) {
+      setErro("Informe o nome impresso no cartão.");
+      return;
+    }
+    if (cvv.length < 3) {
+      setErro("CVV inválido.");
+      return;
+    }
+    if (cep.replace(/\D/g, "").length !== 8) {
+      setErro("CEP inválido.");
+      return;
+    }
+    if (!numero.trim()) {
+      setErro("Informe o número do endereço.");
+      return;
+    }
     if (TURNSTILE_SITE_KEY && !turnstileToken) {
       setErro("Confirme que você é humano.");
       return;
@@ -320,18 +454,28 @@ function Checkout() {
     setErro(null);
     setPagando(true);
     try {
+      trackCheckoutStep("payment_started", "cartao");
       const result = await pagarCartao({
         data: {
-          nome: nome.trim(), email: email.trim(), cpfCnpj: cpf, senha, empresa: empresa.trim(),
-          card: { holderName: cardName.trim(), number: cardNumber, expiryMonth: mm, expiryYear: aa, ccv: cvv },
-          holder: { postalCode: cep, addressNumber: numero.trim(), phone: telefone },
+          nome: nome.trim(),
+          email: email.trim(),
+          cpfCnpj: cpf,
+          empresa: empresa.trim(),
+          telefone,
+          card: {
+            holderName: cardName.trim(),
+            number: cardNumber,
+            expiryMonth: mm,
+            expiryYear: aa,
+            ccv: cvv,
+          },
+          holder: { postalCode: cep, addressNumber: numero.trim() },
         },
       });
-      trackMetaPurchaseBrowser(result.paymentId);
-      const { error } = await signIn(email.trim(), senha, turnstileToken ?? undefined);
-      if (error) { navigate({ to: "/login" }); return; }
-      navigate({ to: "/" });
+      setPedidoAtual(result);
+      await aguardarProvisionamento(result.paymentId, result.activationSecret, "cartao");
     } catch (err) {
+      trackCheckoutStep("payment_failed", "cartao");
       setErro(err instanceof Error ? err.message : "Não foi possível processar o cartão.");
       setTurnstileToken(null);
       turnstileRef.current?.reset();
@@ -349,7 +493,8 @@ function Checkout() {
           <div className="flex items-center gap-3">
             <LogoMakersHub className="h-9 w-9" />
             <span className="font-display text-lg font-semibold">
-              <span className="text-white">Makers</span><span className="text-[#90F826]">Hub</span>
+              <span className="text-white">Makers</span>
+              <span className="text-[#90F826]">Hub</span>
             </span>
           </div>
           <button
@@ -363,7 +508,9 @@ function Checkout() {
         <div className="grid gap-10 md:grid-cols-2 md:gap-12">
           {/* resumo do pedido */}
           <div className="md:pt-2">
-            <span className="text-xs font-medium uppercase tracking-[0.18em] text-[#90F826]">Seu pedido</span>
+            <span className="text-xs font-medium uppercase tracking-[0.18em] text-[#90F826]">
+              Seu pedido
+            </span>
             <h1 className="mt-3 font-display text-3xl font-bold tracking-tight sm:text-4xl">
               MakersHub <span className="text-[#90F826]">Anual</span>
             </h1>
@@ -376,7 +523,7 @@ function Checkout() {
               <Flash size={13} color="currentColor" variant="Bold" /> Condição de lançamento
             </div>
             <ul className="mt-8 space-y-3">
-              {INCLUI.map(item => (
+              {INCLUI.map((item) => (
                 <li key={item} className="flex items-center gap-2.5 text-sm text-white/80">
                   <TickCircle size={18} color="#90F826" variant="Bold" />
                   {item}
@@ -395,7 +542,69 @@ function Checkout() {
             <div className="h-[3px] w-full bg-gradient-to-r from-[#90F826]/40 via-[#90F826] to-[#90F826]/40" />
 
             <div className="p-5 md:p-6">
-              {contaCriada ? (
+              {ativacao ? (
+                <form onSubmit={finalizarAtivacao} className="space-y-4 py-3">
+                  <div className="text-center">
+                    <TickCircle size={40} color="#90F826" variant="Bold" className="mx-auto" />
+                    <h2 className="mt-3 font-display text-xl font-semibold">
+                      Pagamento confirmado!
+                    </h2>
+                    <p className="mt-1 text-sm text-white/50">
+                      Agora crie sua senha para entrar no MakersHub.
+                    </p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-white/55">Crie uma senha</Label>
+                    <div className="relative">
+                      <Input
+                        type={mostrarSenha ? "text" : "password"}
+                        value={senha}
+                        onChange={(e) => setSenha(e.target.value)}
+                        minLength={8}
+                        maxLength={128}
+                        autoComplete="new-password"
+                        autoFocus
+                        className="pr-10 focus:border-[#90F826]/40"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setMostrarSenha((v) => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40"
+                      >
+                        {mostrarSenha ? (
+                          <EyeSlash size={16} color="currentColor" />
+                        ) : (
+                          <Eye size={16} color="currentColor" />
+                        )}
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-white/30">Use pelo menos 8 caracteres.</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-white/55">Confirme a senha</Label>
+                    <Input
+                      type="password"
+                      value={confirmarSenha}
+                      onChange={(e) => setConfirmarSenha(e.target.value)}
+                      minLength={8}
+                      maxLength={128}
+                      autoComplete="new-password"
+                      className="focus:border-[#90F826]/40"
+                    />
+                  </div>
+                  {erro && (
+                    <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-center text-xs text-red-400">
+                      {erro}
+                    </p>
+                  )}
+                  <Button type="submit" size="lg" className="w-full" disabled={ativando}>
+                    {ativando ? "Ativando…" : "Criar senha e entrar"}
+                  </Button>
+                  <p className="text-center text-[10px] text-white/30">
+                    Também enviamos um link de ativação para seu e-mail.
+                  </p>
+                </form>
+              ) : contaCriada ? (
                 <div className="flex flex-col items-center gap-4 py-8 text-center">
                   <TickCircle size={40} color="#90F826" variant="Bold" />
                   <div>
@@ -403,6 +612,7 @@ function Checkout() {
                     <p className="mt-1 text-sm text-white/50">
                       Enviamos um link seguro para você criar sua senha. Confira seu e-mail.
                     </p>
+                    {erro && <p className="mt-3 text-xs text-amber-300">{erro}</p>}
                   </div>
                   <button
                     onClick={() => navigate({ to: "/login" })}
@@ -410,6 +620,16 @@ function Checkout() {
                   >
                     Ir para o login
                   </button>
+                  {pedidoAtual && (
+                    <button
+                      type="button"
+                      onClick={() => void reenviarEmailAtivacao()}
+                      disabled={reenviando}
+                      className="text-xs text-white/55 underline transition hover:text-white disabled:opacity-50"
+                    >
+                      {reenviando ? "Reenviando…" : "Reenviar e-mail de ativação"}
+                    </button>
+                  )}
                 </div>
               ) : aguardandoAtivacao ? (
                 <div className="flex flex-col items-center gap-4 py-8 text-center">
@@ -418,29 +638,41 @@ function Checkout() {
                     <p className="font-medium text-white">Pagamento confirmado!</p>
                     <p className="mt-1 text-sm text-white/50">Ativando sua conta, aguarde…</p>
                   </div>
-                  {erro && <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-xs text-red-400">{erro}</p>}
+                  {erro && (
+                    <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-xs text-red-400">
+                      {erro}
+                    </p>
+                  )}
                 </div>
               ) : charge ? (
                 <>
                   <PixBox charge={charge} onPaid={aoPagarPix} />
-                  {erro && <p className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-center text-xs text-red-400">{erro}</p>}
+                  {erro && (
+                    <p className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-center text-xs text-red-400">
+                      {erro}
+                    </p>
+                  )}
                 </>
               ) : (
                 <div className="space-y-4">
                   <div>
                     <h2 className="font-display text-lg font-semibold">Seus dados</h2>
-                    <p className="mt-0.5 text-xs text-white/40">Criamos sua conta assim que o pagamento for confirmado</p>
+                    <p className="mt-0.5 text-xs text-white/40">
+                      Dados para cobrança; o acesso é configurado depois do pagamento
+                    </p>
                   </div>
 
                   {/* ── dados pessoais ── */}
                   <div className="space-y-3 rounded-xl border border-white/[0.07] bg-white/[0.02] p-4">
-                    <p className="text-[10px] font-medium uppercase tracking-[0.15em] text-white/30">Sua conta</p>
+                    <p className="text-[10px] font-medium uppercase tracking-[0.15em] text-white/30">
+                      Dados da compra
+                    </p>
 
                     <div className="space-y-1.5">
                       <Label className="text-xs text-white/55">Nome completo</Label>
                       <Input
                         value={nome}
-                        onChange={e => setNome(e.target.value)}
+                        onChange={(e) => setNome(e.target.value)}
                         placeholder="João Silva"
                         autoComplete="name"
                         className="focus:border-[#90F826]/40 focus:ring-1 focus:ring-[#90F826]/15"
@@ -452,7 +684,7 @@ function Checkout() {
                         <Label className="text-xs text-white/55">Produtora</Label>
                         <Input
                           value={empresa}
-                          onChange={e => setEmpresa(e.target.value)}
+                          onChange={(e) => setEmpresa(e.target.value)}
                           placeholder="Aurora Filmes"
                           autoComplete="organization"
                           className="focus:border-[#90F826]/40 focus:ring-1 focus:ring-[#90F826]/15"
@@ -462,7 +694,7 @@ function Checkout() {
                         <Label className="text-xs text-white/55">CPF</Label>
                         <Input
                           value={cpf}
-                          onChange={e => setCpf(maskCpf(e.target.value))}
+                          onChange={(e) => setCpf(maskCpf(e.target.value))}
                           placeholder="000.000.000-00"
                           inputMode="numeric"
                           maxLength={14}
@@ -476,7 +708,7 @@ function Checkout() {
                       <Input
                         type="email"
                         value={email}
-                        onChange={e => setEmail(e.target.value)}
+                        onChange={(e) => setEmail(e.target.value)}
                         placeholder="seu@email.com"
                         autoComplete="email"
                         inputMode="email"
@@ -485,71 +717,67 @@ function Checkout() {
                     </div>
 
                     <div className="space-y-1.5">
-                      <Label className="text-xs text-white/55">Escolha uma senha</Label>
-                      <div className="relative">
-                        <Input
-                          type={mostrarSenha ? "text" : "password"}
-                          value={senha}
-                          onChange={e => setSenha(e.target.value)}
-                          onFocus={() => setSenhaFoco(true)}
-                          onBlur={() => setSenhaFoco(false)}
-                          placeholder="••••••••"
-                          autoComplete="new-password"
-                          className="pr-10 focus:border-[#90F826]/40 focus:ring-1 focus:ring-[#90F826]/15"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setMostrarSenha(s => !s)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 transition hover:text-white"
-                        >
-                          {mostrarSenha ? <EyeSlash size={15} color="currentColor" variant="Linear" /> : <Eye size={15} color="currentColor" variant="Linear" />}
-                        </button>
-                      </div>
-                      <RegrasSenha senha={senha} visivel={senhaFoco || senha.length > 0} />
+                      <Label className="text-xs text-white/55">Telefone com DDD</Label>
+                      <Input
+                        value={telefone}
+                        onChange={(e) => setTelefone(maskPhone(e.target.value))}
+                        placeholder="(11) 99999-9999"
+                        inputMode="tel"
+                        maxLength={15}
+                        autoComplete="tel"
+                        className="focus:border-[#90F826]/40 focus:ring-1 focus:ring-[#90F826]/15"
+                      />
+                      <p className="text-[10px] text-white/30">
+                        Usado somente para cobrança e suporte desta compra.
+                      </p>
                     </div>
 
-                    <div className="space-y-1.5">
-                      <Label className="text-xs text-white/55">Confirme a senha</Label>
-                      <div className="relative">
-                        <Input
-                          type={mostrarConfirmar ? "text" : "password"}
-                          value={confirmarSenha}
-                          onChange={e => setConfirmarSenha(e.target.value)}
-                          placeholder="••••••••"
-                          autoComplete="new-password"
-                          className={cn("pr-10 focus:border-[#90F826]/40 focus:ring-1 focus:ring-[#90F826]/15", confirmarSenha && senha !== confirmarSenha && "border-red-500/60")}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setMostrarConfirmar(s => !s)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-white/50 transition hover:text-white"
-                        >
-                          {mostrarConfirmar ? <EyeSlash size={16} color="currentColor" variant="Linear" /> : <Eye size={16} color="currentColor" variant="Linear" />}
-                        </button>
-                      </div>
-                      {confirmarSenha && senha !== confirmarSenha && (
-                        <p className="text-[11px] text-red-400">As senhas não coincidem.</p>
-                      )}
-                    </div>
-                  </div>{/* fim painel sua conta */}
+                    <label className="flex cursor-pointer items-start gap-2.5 text-[11px] leading-relaxed text-white/45">
+                      <input
+                        type="checkbox"
+                        checked={aceitouTermos}
+                        onChange={(e) => setAceitouTermos(e.target.checked)}
+                        className="mt-0.5 h-4 w-4 accent-[#90F826]"
+                      />
+                      <span>
+                        Li e aceito os{" "}
+                        <a href="/termos" target="_blank" className="text-white/70 underline">
+                          Termos de Uso
+                        </a>{" "}
+                        e a{" "}
+                        <a href="/privacidade" target="_blank" className="text-white/70 underline">
+                          Política de Privacidade
+                        </a>
+                        .
+                      </span>
+                    </label>
+                  </div>
+                  {/* fim painel sua conta */}
 
                   {/* ── separador forma de pagamento ── */}
                   <div className="relative flex items-center gap-3 py-1">
                     <div className="h-px flex-1 bg-white/[0.07]" />
-                    <span className="text-[11px] uppercase tracking-widest text-white/25">pagamento</span>
+                    <span className="text-[11px] uppercase tracking-widest text-white/25">
+                      pagamento
+                    </span>
                     <div className="h-px flex-1 bg-white/[0.07]" />
                   </div>
 
                   {/* seletor */}
                   <div className="grid grid-cols-2 gap-1.5 rounded-xl border border-white/[0.07] bg-white/[0.03] p-1">
-                    {(["pix", "cartao"] as const).map(op => (
+                    {(["pix", "cartao"] as const).map((op) => (
                       <button
                         key={op}
                         type="button"
-                        onClick={() => { setAba(op); setErro(null); }}
+                        onClick={() => {
+                          setAba(op);
+                          setErro(null);
+                        }}
                         className={cn(
                           "rounded-lg py-2 text-sm font-medium transition",
-                          aba === op ? "bg-[#90F826] text-[#0a0a0a]" : "text-white/60 hover:text-white",
+                          aba === op
+                            ? "bg-[#90F826] text-[#0a0a0a]"
+                            : "text-white/60 hover:text-white",
                         )}
                       >
                         {op === "pix" ? "Pix" : "Cartão de crédito"}
@@ -560,16 +788,21 @@ function Checkout() {
                   {/* ── aba pix ── */}
                   {aba === "pix" ? (
                     <form onSubmit={gerarPix} className="space-y-4">
-                      {erro && <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-center text-xs text-red-400">{erro}</p>}
+                      {erro && (
+                        <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-center text-xs text-red-400">
+                          {erro}
+                        </p>
+                      )}
                       <Button type="submit" size="lg" className="w-full" disabled={criando}>
                         {criando ? "Gerando Pix…" : "Pagar com Pix · R$ 97"}
                       </Button>
-                      <p className="text-center text-[11px] text-white/35">Pagamento instantâneo via Pix</p>
+                      <p className="text-center text-[11px] text-white/35">
+                        Pagamento instantâneo via Pix
+                      </p>
                     </form>
                   ) : (
                     /* ── aba cartão ── */
                     <form onSubmit={pagarComCartao} className="space-y-4">
-
                       {/* preview do cartão */}
                       <CardPreview
                         number={cardNumber}
@@ -580,16 +813,23 @@ function Checkout() {
 
                       {/* dados do cartão em painel destacado */}
                       <div className="space-y-3 rounded-xl border border-white/[0.07] bg-white/[0.02] p-4">
-                        <p className="text-[10px] font-medium uppercase tracking-[0.15em] text-white/30">Dados do cartão</p>
+                        <p className="text-[10px] font-medium uppercase tracking-[0.15em] text-white/30">
+                          Dados do cartão
+                        </p>
 
                         {/* número */}
                         <div className="space-y-1.5">
                           <Label className="text-xs text-white/55">Número</Label>
                           <div className="relative">
-                            <Lock1 size={13} color="currentColor" className="absolute left-3 top-1/2 -translate-y-1/2 text-white/25" variant="Linear" />
+                            <Lock1
+                              size={13}
+                              color="currentColor"
+                              className="absolute left-3 top-1/2 -translate-y-1/2 text-white/25"
+                              variant="Linear"
+                            />
                             <Input
                               value={cardNumber}
-                              onChange={e => setCardNumber(maskCard(e.target.value))}
+                              onChange={(e) => setCardNumber(maskCard(e.target.value))}
                               placeholder="0000 0000 0000 0000"
                               inputMode="numeric"
                               maxLength={19}
@@ -607,7 +847,7 @@ function Checkout() {
                           <Label className="text-xs text-white/55">Nome no cartão</Label>
                           <Input
                             value={cardName}
-                            onChange={e => setCardName(e.target.value.toUpperCase())}
+                            onChange={(e) => setCardName(e.target.value.toUpperCase())}
                             placeholder="COMO ESCRITO NO CARTÃO"
                             autoComplete="cc-name"
                             className="font-mono tracking-wider focus:border-[#90F826]/40 focus:ring-1 focus:ring-[#90F826]/15"
@@ -620,7 +860,7 @@ function Checkout() {
                             <Label className="text-xs text-white/55">Validade</Label>
                             <Input
                               value={validade}
-                              onChange={e => setValidade(maskExpiry(e.target.value))}
+                              onChange={(e) => setValidade(maskExpiry(e.target.value))}
                               placeholder="MM/AA"
                               inputMode="numeric"
                               maxLength={5}
@@ -632,7 +872,12 @@ function Checkout() {
                             <Label className="flex items-center gap-1.5 text-xs text-white/55">
                               CVV
                               <span className="group relative cursor-help">
-                                <InfoCircle size={11} color="currentColor" variant="Linear" className="text-white/25" />
+                                <InfoCircle
+                                  size={11}
+                                  color="currentColor"
+                                  variant="Linear"
+                                  className="text-white/25"
+                                />
                                 <span className="pointer-events-none absolute bottom-full left-1/2 mb-2 -translate-x-1/2 whitespace-nowrap rounded-lg bg-[#1a1a1a] border border-white/10 px-2.5 py-1.5 text-[10px] text-white/60 opacity-0 shadow-xl transition group-hover:opacity-100 z-10">
                                   3 dígitos no verso do cartão
                                 </span>
@@ -640,7 +885,9 @@ function Checkout() {
                             </Label>
                             <Input
                               value={cvv}
-                              onChange={e => setCvv(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                              onChange={(e) =>
+                                setCvv(e.target.value.replace(/\D/g, "").slice(0, 4))
+                              }
                               placeholder="•••"
                               inputMode="numeric"
                               maxLength={4}
@@ -653,14 +900,16 @@ function Checkout() {
 
                       {/* endereço de cobrança */}
                       <div className="space-y-3 rounded-xl border border-white/[0.07] bg-white/[0.02] p-4">
-                        <p className="text-[10px] font-medium uppercase tracking-[0.15em] text-white/30">Endereço de cobrança</p>
+                        <p className="text-[10px] font-medium uppercase tracking-[0.15em] text-white/30">
+                          Endereço de cobrança
+                        </p>
 
                         <div className="grid grid-cols-2 gap-3">
                           <div className="space-y-1.5">
                             <Label className="text-xs text-white/55">CEP</Label>
                             <Input
                               value={cep}
-                              onChange={e => setCep(maskCep(e.target.value))}
+                              onChange={(e) => setCep(maskCep(e.target.value))}
                               placeholder="00000-000"
                               inputMode="numeric"
                               maxLength={9}
@@ -672,25 +921,12 @@ function Checkout() {
                             <Label className="text-xs text-white/55">Nº</Label>
                             <Input
                               value={numero}
-                              onChange={e => setNumero(e.target.value.replace(/\D/g, ""))}
+                              onChange={(e) => setNumero(e.target.value.replace(/\D/g, ""))}
                               placeholder="123"
                               inputMode="numeric"
                               className="focus:border-[#90F826]/40 focus:ring-1 focus:ring-[#90F826]/15"
                             />
                           </div>
-                        </div>
-
-                        <div className="space-y-1.5">
-                          <Label className="text-xs text-white/55">Telefone com DDD</Label>
-                          <Input
-                            value={telefone}
-                            onChange={e => setTelefone(maskPhone(e.target.value))}
-                            placeholder="(11) 99999-9999"
-                            inputMode="numeric"
-                            maxLength={15}
-                            autoComplete="tel"
-                            className="focus:border-[#90F826]/40 focus:ring-1 focus:ring-[#90F826]/15"
-                          />
                         </div>
                       </div>
 
@@ -705,7 +941,11 @@ function Checkout() {
                         />
                       )}
 
-                      {erro && <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-center text-xs text-red-400">{erro}</p>}
+                      {erro && (
+                        <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-center text-xs text-red-400">
+                          {erro}
+                        </p>
+                      )}
 
                       <Button
                         type="submit"
@@ -730,8 +970,8 @@ function Checkout() {
                         </span>
                         <span className="h-3 w-px bg-white/10" />
                         <span className="flex items-center gap-1.5">
-                          <ShieldTick size={11} color="currentColor" variant="Linear" />
-                          7 dias de garantia
+                          <ShieldTick size={11} color="currentColor" variant="Linear" />7 dias de
+                          garantia
                         </span>
                       </div>
                     </form>

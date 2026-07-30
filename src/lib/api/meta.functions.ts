@@ -43,11 +43,6 @@ function normalizeEmail(value: string): string {
   return value.trim().toLowerCase();
 }
 
-function normalizePhone(value: string): string {
-  const digits = value.replace(/\D/g, "");
-  return digits.startsWith("55") ? digits : `55${digits}`;
-}
-
 async function sha256(value: string): Promise<string> {
   const bytes = new TextEncoder().encode(value);
   const digest = await crypto.subtle.digest("SHA-256", bytes);
@@ -123,42 +118,41 @@ export const trackMetaBrowserEvent = createServerFn({ method: "POST" })
     };
 
     await sendToMeta(event).catch((error) => {
-      console.error("[meta] falha ao enviar evento:", error instanceof Error ? error.message : error);
+      console.error(
+        "[meta] falha ao enviar evento:",
+        error instanceof Error ? error.message : error,
+      );
     });
     return { accepted: true };
   });
 
 // Purchase só pode nascer no servidor após a confirmação real do pagamento.
 // paymentId torna o event_id determinístico e permite deduplicação/idempotência.
-export const trackMetaPurchase = createServerOnlyFn(async ({
-  paymentId,
-  email,
-  phone,
-}: {
-  paymentId: string;
-  email: string;
-  phone?: string;
-}): Promise<void> => {
-  const userData: MetaUserData = {
-    em: [await sha256(normalizeEmail(email))],
-  };
-  if (phone) userData.ph = [await sha256(normalizePhone(phone))];
+export const trackMetaPurchase = createServerOnlyFn(
+  async ({ paymentId, email }: { paymentId: string; email: string }): Promise<void> => {
+    const userData: MetaUserData = {
+      em: [await sha256(normalizeEmail(email))],
+    };
 
-  await sendToMeta({
-    event_name: "Purchase",
-    event_time: Math.floor(Date.now() / 1000),
-    event_id: `purchase_${paymentId}`,
-    event_source_url: `${SITE_ORIGIN}/checkout`,
-    action_source: "website",
-    user_data: userData,
-    custom_data: {
-      currency: "BRL",
-      value: 97,
-      content_name: "MakersHub Anual",
-      content_type: "product",
-      content_ids: ["makershub-anual"],
-    },
-  }).catch((error) => {
-    console.error("[meta] falha ao enviar Purchase:", error instanceof Error ? error.message : error);
-  });
-});
+    await sendToMeta({
+      event_name: "Purchase",
+      event_time: Math.floor(Date.now() / 1000),
+      event_id: `purchase_${paymentId}`,
+      event_source_url: `${SITE_ORIGIN}/checkout`,
+      action_source: "website",
+      user_data: userData,
+      custom_data: {
+        currency: "BRL",
+        value: 97,
+        content_name: "MakersHub Anual",
+        content_type: "product",
+        content_ids: ["makershub-anual"],
+      },
+    }).catch((error) => {
+      console.error(
+        "[meta] falha ao enviar Purchase:",
+        error instanceof Error ? error.message : error,
+      );
+    });
+  },
+);
