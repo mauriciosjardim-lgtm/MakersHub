@@ -14,7 +14,9 @@ import {
   Setting2,
   Logout,
   Profile2User,
+  Messages,
 } from "iconsax-react";
+import { EVENTO_ABRIR_SUPORTE } from "@/components/suporte/suporte-widget";
 import { useAuth } from "@/lib/auth";
 import {
   Sidebar,
@@ -204,6 +206,21 @@ export function AppSidebar() {
 
       <SidebarFooter className="border-t border-sidebar-border p-1.5">
         <SidebarMenu>
+          {/* Caminho fixo para o suporte: o botão flutuante pode ter sido
+              dispensado no "x", e aí este item continua sendo a porta de entrada. */}
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              tooltip="Suporte"
+              onClick={() => window.dispatchEvent(new Event(EVENTO_ABRIR_SUPORTE))}
+              className={cn(
+                "h-11 rounded-xl px-3 transition-all duration-200 hover:translate-x-0.5 group-data-[collapsible=icon]:!size-11 group-data-[collapsible=icon]:!p-2.5 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:[&>span]:hidden",
+                navIconClass,
+              )}
+            >
+              <Messages {...iconProps(false)} />
+              <span>Suporte</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
               asChild

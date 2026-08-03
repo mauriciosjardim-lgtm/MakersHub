@@ -234,7 +234,7 @@ function RootComponent() {
     return (
       <QueryClientProvider client={queryClient}>
         <SalesLandingPage />
-        <Toaster />
+        <Toaster position="top-center" />
       </QueryClientProvider>
     );
   }
@@ -244,7 +244,10 @@ function RootComponent() {
       <Suspense fallback={<MakersHubUpdatedScreen />}>
         <AppRuntimeShell sessionHint={sessionHint} />
       </Suspense>
-      <Toaster />
+      {/* top-center de propósito: o default do sonner é bottom-right, que fica
+          exatamente em cima do botão flutuante de suporte (e cobriria até o
+          toast de sucesso disparado pelo próprio widget). */}
+      <Toaster position="top-center" />
     </QueryClientProvider>
   );
 }
