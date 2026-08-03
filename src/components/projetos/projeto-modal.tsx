@@ -24,6 +24,7 @@ import { MembrosSelect } from "@/components/projetos/membros-select";
 import { Trash } from "iconsax-react";
 import { useAuth } from "@/lib/auth";
 import { useProjetos } from "@/lib/hooks/useProjetos";
+import { usuarioTemAcesso, type Permissoes } from "@/lib/permissoes";
 import { toast } from "sonner";
 
 const toDate = (iso?: string | null) => iso?.slice(0, 10) ?? "";
@@ -49,6 +50,11 @@ export function ProjetoModal({
   const { usuario } = useAuth();
   const { projetos } = useProjetos();
   const podeVerValor = usuario?.role === "admin";
+  const podeAcessarComercial = usuarioTemAcesso(
+    usuario?.role,
+    usuario?.permissoes as Partial<Permissoes> | null,
+    "comercial",
+  );
   const editando = !!projeto;
   const [nome, setNome] = useState("");
   const [cliente, setCliente] = useState("");
@@ -104,21 +110,23 @@ export function ProjetoModal({
     }
     setSalvando(true);
     try {
-      // Vínculo com o cadastro de cliente acontece nos bastidores — o usuário
-      // só digita o nome, igual sempre foi.
-      const registro =
-        clienteIdInicial && !editando
+      // O vínculo com o CRM é opcional. Quem só tem acesso a Projetos salva o
+      // nome textual do cliente sem consultar ou escrever no módulo Comercial.
+      const registro = !podeAcessarComercial
+        ? projeto?.clienteId
+          ? { id: projeto.clienteId }
+          : null
+        : clienteIdInicial && !editando
           ? { id: clienteIdInicial }
           : projeto?.clienteId &&
               projeto.cliente.trim().toLocaleLowerCase("pt-BR") ===
                 cliente.trim().toLocaleLowerCase("pt-BR")
             ? { id: projeto.clienteId }
             : await comercial.encontrarOuCriarCliente(cliente.trim());
-      if (!registro) return;
       const payload = {
         nome: nome.trim(),
         cliente: cliente.trim(),
-        clienteId: registro.id,
+        clienteId: registro?.id,
         descricao: descricao.trim() || undefined,
         fase,
         equipe,
