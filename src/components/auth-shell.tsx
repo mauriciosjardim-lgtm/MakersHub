@@ -3,7 +3,10 @@ import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { Topbar } from "@/components/topbar";
 import { TrialExpirado } from "@/components/trial-expirado";
-import { SuporteWidget } from "@/components/suporte/suporte-widget";
+// DESATIVADO: o widget de suporte deu problema em produção. Para religar,
+// descomente este import e o <SuporteWidget /> lá embaixo, mais o item
+// "Suporte" na sidebar (src/components/app-sidebar.tsx).
+// import { SuporteWidget } from "@/components/suporte/suporte-widget";
 
 interface AuthShellProps {
   trialExpirado: boolean;
@@ -31,7 +34,7 @@ export function AuthShell({ trialExpirado, sidebarStyle }: AuthShellProps) {
           </SidebarInset>
         </SidebarProvider>
       )}
-      <SuporteWidget />
+      {/* <SuporteWidget /> */}
     </>
   );
 }

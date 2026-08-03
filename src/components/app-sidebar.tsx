@@ -14,9 +14,10 @@ import {
   Setting2,
   Logout,
   Profile2User,
-  Messages,
+  // Messages,
 } from "iconsax-react";
-import { EVENTO_ABRIR_SUPORTE } from "@/components/suporte/suporte-widget";
+// DESATIVADO junto com o widget de suporte (ver src/components/auth-shell.tsx).
+// import { EVENTO_ABRIR_SUPORTE } from "@/components/suporte/suporte-widget";
 import { useAuth } from "@/lib/auth";
 import {
   Sidebar,
@@ -206,8 +207,8 @@ export function AppSidebar() {
 
       <SidebarFooter className="border-t border-sidebar-border p-1.5">
         <SidebarMenu>
-          {/* Caminho fixo para o suporte: o botão flutuante pode ter sido
-              dispensado no "x", e aí este item continua sendo a porta de entrada. */}
+          {/* DESATIVADO junto com o widget de suporte. Sem o widget montado
+              este item não abriria nada, então some também.
           <SidebarMenuItem>
             <SidebarMenuButton
               tooltip="Suporte"
@@ -221,6 +222,7 @@ export function AppSidebar() {
               <span>Suporte</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
+          */}
           <SidebarMenuItem>
             <SidebarMenuButton
               asChild
