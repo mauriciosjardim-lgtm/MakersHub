@@ -5,3 +5,28 @@ main = "dist/server/server.js"
 
 [assets]
 directory = "./dist/client"
+
+# Config pública do Supabase, versionada de propósito.
+#
+# Não são segredo: a URL é pública e a publishable key foi feita para ir no
+# navegador (quem protege os dados é a RLS). As duas já estão em texto puro em
+# src/lib/supabase.ts e vite.config.ts — aqui elas só passam a valer também no
+# runtime do Worker.
+#
+# Precisam estar NESTE arquivo, e não no painel do Cloudflare, por dois motivos:
+#
+# 1. `wrangler deploy` trata este arquivo como fonte da verdade das Variables.
+#    Toda Variable criada pelo painel é APAGADA no deploy seguinte se não
+#    estiver aqui (Secrets são preservados, Variables não). Foi assim que
+#    SUPABASE_URL e SUPABASE_PUBLISHABLE_KEY sumiram do runtime.
+# 2. Quem lê essas duas é src/integrations/supabase/auth-middleware.ts, o único
+#    ponto do projeto que usa process.env.SUPABASE_URL sem cair no fallback do
+#    `define` do vite. Era por isso que o resto do app funcionava com a config
+#    errada e só ele quebrava.
+#
+# O projeto correto é smsqhbbbyjacatxvihks (ver 50a9256, "Point production to
+# correct Supabase project"). O antigo, emivrhkmwqofylsedyxa, foi abandonado em
+# junho/2026 e não deve voltar a aparecer em lugar nenhum.
+[vars]
+SUPABASE_URL = "https://smsqhbbbyjacatxvihks.supabase.co"
+SUPABASE_PUBLISHABLE_KEY = "sb_publishable_Kcsq5BKG5RWrv7S9RuoD1w_0b6MS6CU"
