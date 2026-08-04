@@ -35,7 +35,13 @@ import type { Icon } from "iconsax-react";
 import { temAcesso, type Permissoes } from "@/lib/permissoes";
 import { cn } from "@/lib/utils";
 
-type NavItem = { title: string; url: string; icon: Icon; modulo?: keyof Permissoes; emBreve?: boolean };
+type NavItem = {
+  title: string;
+  url: string;
+  icon: Icon;
+  modulo?: keyof Permissoes;
+  emBreve?: boolean;
+};
 type SoonItem = { title: string; icon: Icon };
 
 const primary: NavItem[] = [
@@ -76,10 +82,11 @@ export function AppSidebar() {
     color: "currentColor",
     variant: active ? ("Bulk" as const) : ("TwoTone" as const),
   });
-  const navIconClass = "[&>svg]:!size-6 [&>svg]:transition-[transform,filter,opacity] [&>svg]:duration-200 hover:[&>svg]:scale-110 hover:[&>svg]:opacity-100 data-[active=true]:[&>svg]:drop-shadow-[0_0_7px_var(--sidebar-primary)]";
+  const navIconClass =
+    "[&>svg]:!size-6 [&>svg]:transition-[transform,filter,opacity] [&>svg]:duration-200 hover:[&>svg]:scale-110 hover:[&>svg]:opacity-100 data-[active=true]:[&>svg]:drop-shadow-[0_0_7px_var(--sidebar-primary)]";
 
-  const role = (usuario as any)?.role ?? "admin";
-  const permissoes = ((usuario as any)?.permissoes as Partial<Permissoes> | null) ?? null;
+  const role = usuario?.role ?? "admin";
+  const permissoes = (usuario?.permissoes as Partial<Permissoes> | null) ?? null;
   const podeVer = (item: NavItem) =>
     role === "admin" || !item.modulo || temAcesso(permissoes, item.modulo);
 
@@ -124,16 +131,26 @@ export function AppSidebar() {
                     asChild
                     isActive={isActive(item.url)}
                     tooltip={item.title}
-                    className={cn("group/item h-11 rounded-xl px-3 transition-all duration-200 hover:translate-x-0.5 data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-primary data-[active=true]:font-medium group-data-[collapsible=icon]:!size-11 group-data-[collapsible=icon]:!p-2.5 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:[&>span]:hidden", navIconClass)}
+                    className={cn(
+                      "group/item h-11 rounded-xl px-3 transition-all duration-200 hover:translate-x-0.5 data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-primary data-[active=true]:font-medium group-data-[collapsible=icon]:!size-11 group-data-[collapsible=icon]:!p-2.5 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:[&>span]:hidden",
+                      navIconClass,
+                    )}
                   >
                     <Link to={item.url}>
                       <item.icon {...iconProps(isActive(item.url))} />
                       <span>{item.title}</span>
                       {item.emBreve && !collapsed && (
-                        <span className="ml-auto rounded-md border border-primary/20 bg-primary/8 px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-wider text-primary">Em breve</span>
+                        <span className="ml-auto rounded-md border border-primary/20 bg-primary/8 px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-wider text-primary">
+                          Em breve
+                        </span>
                       )}
                       {isActive(item.url) && (
-                        <span className={cn("h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_8px_var(--primary)]", !item.emBreve && "ml-auto")} />
+                        <span
+                          className={cn(
+                            "h-1.5 w-1.5 rounded-full bg-primary shadow-[0_0_8px_var(--primary)]",
+                            !item.emBreve && "ml-auto",
+                          )}
+                        />
                       )}
                     </Link>
                   </SidebarMenuButton>
@@ -173,7 +190,10 @@ export function AppSidebar() {
                     asChild
                     isActive={isActive(item.url)}
                     tooltip={item.title}
-                    className={cn("h-11 rounded-xl px-3 transition-all duration-200 hover:translate-x-0.5 data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-primary group-data-[collapsible=icon]:!size-11 group-data-[collapsible=icon]:!p-2.5 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:[&>span]:hidden", navIconClass)}
+                    className={cn(
+                      "h-11 rounded-xl px-3 transition-all duration-200 hover:translate-x-0.5 data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-primary group-data-[collapsible=icon]:!size-11 group-data-[collapsible=icon]:!p-2.5 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:[&>span]:hidden",
+                      navIconClass,
+                    )}
                   >
                     <Link to={item.url}>
                       <item.icon {...iconProps(isActive(item.url))} />
@@ -201,7 +221,6 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
-
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border p-1.5">
@@ -226,7 +245,10 @@ export function AppSidebar() {
               asChild
               isActive={isActive("/configuracoes")}
               tooltip="Configurações"
-              className={cn("h-11 rounded-xl px-3 transition-all duration-200 hover:translate-x-0.5 data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-primary group-data-[collapsible=icon]:!size-11 group-data-[collapsible=icon]:!p-2.5 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:[&>span]:hidden", navIconClass)}
+              className={cn(
+                "h-11 rounded-xl px-3 transition-all duration-200 hover:translate-x-0.5 data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-primary group-data-[collapsible=icon]:!size-11 group-data-[collapsible=icon]:!p-2.5 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:[&>span]:hidden",
+                navIconClass,
+              )}
             >
               <Link to="/configuracoes">
                 <Setting2 {...iconProps(isActive("/configuracoes"))} />
