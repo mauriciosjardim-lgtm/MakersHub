@@ -16,6 +16,8 @@ import { PixBox } from "@/components/pix-box";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PhoneInputInternacional } from "@/components/ui/phone-input-internacional";
+import { PAIS_PADRAO, telefoneValido } from "@/lib/telefone-internacional";
 import { cn } from "@/lib/utils";
 import {
   iniciarPix,
@@ -61,12 +63,6 @@ function maskCpf(v: string) {
     .replace(/(\d{3})(\d)/, "$1.$2")
     .replace(/(\d{3})(\d)/, "$1.$2")
     .replace(/(\d{3})(\d{1,2})$/, "$1-$2");
-}
-
-function maskPhone(v: string) {
-  const d = v.replace(/\D/g, "").slice(0, 11);
-  if (d.length <= 10) return d.replace(/(\d{2})(\d{4})(\d{0,4})/, "($1) $2-$3").replace(/-$/, "");
-  return d.replace(/(\d{2})(\d{5})(\d{0,4})/, "($1) $2-$3").replace(/-$/, "");
 }
 
 function maskCep(v: string) {
@@ -224,6 +220,7 @@ function Checkout() {
   const [email, setEmail] = useState("");
   const [cpf, setCpf] = useState("");
   const [telefone, setTelefone] = useState("");
+  const [paisTelefone, setPaisTelefone] = useState(PAIS_PADRAO);
   const [aceitouTermos, setAceitouTermos] = useState(false);
 
   const [aba, setAba] = useState<"pix" | "cartao">("pix");
@@ -268,7 +265,8 @@ function Checkout() {
     if (!email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
       return "Informe um e-mail válido.";
     if (cpf.replace(/\D/g, "").length !== 11) return "Informe um CPF válido (11 dígitos).";
-    if (telefone.replace(/\D/g, "").length < 10) return "Informe um telefone com DDD.";
+    if (!telefoneValido(telefone, paisTelefone))
+      return paisTelefone === "BR" ? "Informe um telefone com DDD." : "Informe um telefone válido.";
     if (!aceitouTermos) return "Aceite os Termos de Uso e a Política de Privacidade.";
     return null;
   }
@@ -341,6 +339,7 @@ function Checkout() {
           cpfCnpj: cpf,
           empresa: empresa.trim(),
           telefone,
+          paisTelefone,
         },
       });
       setCharge(c);
@@ -462,6 +461,7 @@ function Checkout() {
           cpfCnpj: cpf,
           empresa: empresa.trim(),
           telefone,
+          paisTelefone,
           card: {
             holderName: cardName.trim(),
             number: cardNumber,
@@ -717,15 +717,13 @@ function Checkout() {
                     </div>
 
                     <div className="space-y-1.5">
-                      <Label className="text-xs text-white/55">Telefone com DDD</Label>
-                      <Input
+                      <Label className="text-xs text-white/55">Telefone</Label>
+                      <PhoneInputInternacional
+                        pais={paisTelefone}
+                        onPaisChange={setPaisTelefone}
                         value={telefone}
-                        onChange={(e) => setTelefone(maskPhone(e.target.value))}
-                        placeholder="(11) 99999-9999"
-                        inputMode="tel"
-                        maxLength={15}
-                        autoComplete="tel"
-                        className="focus:border-[#90F826]/40 focus:ring-1 focus:ring-[#90F826]/15"
+                        onValueChange={setTelefone}
+                        className="[&_input]:focus:border-[#90F826]/40 [&_input]:focus:ring-1 [&_input]:focus:ring-[#90F826]/15"
                       />
                       <p className="text-[10px] text-white/30">
                         Usado somente para cobrança e suporte desta compra.

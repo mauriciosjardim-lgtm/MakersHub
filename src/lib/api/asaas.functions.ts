@@ -4,6 +4,7 @@ import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { corpoCobrancaCartao, corpoCobrancaPix, splitDaCobranca } from "@/lib/asaas-split";
+import { paisPorCodigo, telefoneParaAsaas, telefoneValido } from "@/lib/telefone-internacional";
 import { rateLimit } from "./rateLimit";
 import { trackMetaPurchase } from "./meta.functions";
 
@@ -48,14 +49,29 @@ function admin() {
 }
 
 const onlyDigits = (s: string) => s.replace(/\D/g, "");
-const contatoClienteAsaas = (telefone: string) => {
-  const digits = onlyDigits(telefone);
+
+/**
+ * Telefone no payload do Asaas. Ele valida o número como brasileiro, então
+ * comprador de fora simplesmente não manda o campo (é opcional na API dele):
+ * mandar um número estrangeiro faria a cobrança inteira falhar por causa de um
+ * dado acessório.
+ *
+ * ATENÇÃO: o telefone não é persistido em lugar nenhum. Para comprador de fora
+ * do Brasil isso significa que o contato dele se perde. É temporário, à espera
+ * da coluna `telefone` em pending_orders.
+ */
+const contatoClienteAsaas = (telefone: string, pais: string) => {
+  const digits = telefoneParaAsaas(telefone, pais);
+  if (!digits) return {};
   const isMobile = digits.length === 11 || digits[2] === "9";
   return isMobile ? { mobilePhone: digits } : { phone: digits };
 };
-const telefoneBR = z.string().refine((value) => /^\d{10,11}$/.test(onlyDigits(value)), {
-  message: "Informe um telefone brasileiro com DDD.",
+
+// Validação de forma: no Brasil exige DDD + número; fora, faixa plausível.
+const paisTelefoneSchema = z.string().refine((code) => Boolean(paisPorCodigo(code)), {
+  message: "Selecione um país válido para o telefone.",
 });
+const telefoneSchema = z.string().min(1, "Informe um telefone.");
 
 type AsaasResponse = {
   id?: string;
@@ -344,12 +360,16 @@ export const iniciarPix = createServerFn({ method: "POST" })
       email: z.string().email(),
       cpfCnpj: z.string().min(11),
       empresa: z.string().min(1),
-      telefone: telefoneBR,
+      telefone: telefoneSchema,
+      paisTelefone: paisTelefoneSchema,
     }),
   )
   .handler(async ({ data }) => {
     // Endpoint público: sem limite, um bot cria clientes/cobranças em massa no Asaas.
     rateLimit("checkout-pix", 10, 60 * 60_000);
+    if (!telefoneValido(data.telefone, data.paisTelefone)) {
+      throw new Error("Informe um telefone válido.");
+    }
     const sb = admin();
     const hoje = new Date().toISOString().slice(0, 10);
     const activationSecret = segredoAtivacao();
@@ -361,7 +381,7 @@ export const iniciarPix = createServerFn({ method: "POST" })
         name: data.nome,
         cpfCnpj: onlyDigits(data.cpfCnpj),
         email: data.email,
-        ...contatoClienteAsaas(data.telefone),
+        ...contatoClienteAsaas(data.telefone, data.paisTelefone),
       }),
     });
     if (!cliente.id) throw new Error("Asaas não retornou o cliente da cobrança.");
@@ -542,7 +562,8 @@ export const pagarCartao = createServerFn({ method: "POST" })
       email: z.string().email(),
       cpfCnpj: z.string().min(11),
       empresa: z.string().min(1),
-      telefone: telefoneBR,
+      telefone: telefoneSchema,
+      paisTelefone: paisTelefoneSchema,
       // SEM userId: pagarCartao é EXCLUSIVAMENTE checkout de conta nova.
       // Upgrade de conta existente é outro fluxo (finalizarPix, autenticado).
       card: z.object({
@@ -561,6 +582,9 @@ export const pagarCartao = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     // Endpoint público com dados de cartão: alvo clássico de "card testing".
     rateLimit("checkout-cartao", 5, 60 * 60_000);
+    if (!telefoneValido(data.telefone, data.paisTelefone)) {
+      throw new Error("Informe um telefone válido.");
+    }
     const remoteIp = getRequestIP({ xForwardedFor: true }) ?? "0.0.0.0";
     const sb = admin();
     const activationSecret = segredoAtivacao();
@@ -572,7 +596,7 @@ export const pagarCartao = createServerFn({ method: "POST" })
         name: data.nome,
         cpfCnpj: onlyDigits(data.cpfCnpj),
         email: data.email,
-        ...contatoClienteAsaas(data.telefone),
+        ...contatoClienteAsaas(data.telefone, data.paisTelefone),
       }),
     });
     if (!cliente.id) throw new Error("Asaas não retornou o cliente da cobrança.");
@@ -597,7 +621,8 @@ export const pagarCartao = createServerFn({ method: "POST" })
           cpfCnpj: onlyDigits(data.cpfCnpj),
           postalCode: onlyDigits(data.holder.postalCode),
           addressNumber: data.holder.addressNumber,
-          phone: onlyDigits(data.telefone),
+          // Vazio quando o comprador é de fora: o Asaas valida como BR.
+          phone: telefoneParaAsaas(data.telefone, data.paisTelefone) ?? "",
         },
       }),
     );
