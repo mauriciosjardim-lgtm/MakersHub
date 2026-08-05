@@ -3,6 +3,7 @@ import { getRequestIP } from "@tanstack/react-start/server";
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { corpoCobrancaCartao, corpoCobrancaPix, splitDaCobranca } from "@/lib/asaas-split";
 import { rateLimit } from "./rateLimit";
 import { trackMetaPurchase } from "./meta.functions";
 
@@ -87,7 +88,67 @@ async function asaas(path: string, init: RequestInit) {
   return json;
 }
 
-const PRECO = 97;
+// Quem precisa saber que uma venda saiu sem repasse. Sem o alerta, o log no
+// Cloudflare que ninguém acompanha tem o mesmo efeito prático de não registrar.
+const ALERTA_SPLIT = ["igorsjohn@gmail.com", "mauriciosjardim@gmail.com"];
+
+/**
+ * Avisa os sócios que uma cobrança foi criada sem o repasse ao parceiro.
+ * Best-effort: alerta que falha não pode derrubar venda.
+ */
+async function alertarSplitRecusado(motivo: string, paymentId: string) {
+  const rKey = process.env.RESEND_API_KEY ?? "";
+  if (!rKey) {
+    console.error("[split] RESEND_API_KEY não configurada; alerta de repasse não enviado");
+    return;
+  }
+  const resp = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${rKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      from: RESEND_FROM,
+      to: ALERTA_SPLIT,
+      subject: "[MakersHub] Venda criada SEM repasse ao parceiro",
+      html:
+        `<p>Uma cobrança foi criada <strong>sem o split</strong> porque o Asaas recusou o repasse.</p>` +
+        `<p>Cobrança: <code>${paymentId}</code></p>` +
+        `<p>Motivo devolvido pelo Asaas: <code>${motivo.replace(/</g, "&lt;")}</code></p>` +
+        `<p>A venda foi concluída normalmente. O valor do parceiro ficou na conta principal e precisa ser acertado à mão.</p>`,
+    }),
+  });
+  if (!resp.ok) {
+    console.error("[split] Resend falhou ao enviar alerta de repasse, status:", resp.status);
+  }
+}
+
+/**
+ * Único ponto que cria cobrança. Concentra o split aqui para que nenhum fluxo
+ * consiga esquecer dele.
+ *
+ * Se o Asaas recusar o repasse, a venda acontece mesmo assim, sem split: perder
+ * a venda por configuração de repasse foi decisão do dono do produto. O preço
+ * disso é que a pendência com o parceiro fica invisível no sistema (nem o
+ * webhook nem pending_orders registram valor), daí o alerta por e-mail.
+ *
+ * A recuperação é estreita de propósito: só reage a erro de split. Cartão
+ * recusado e CPF inválido continuam subindo, porque repetir a chamada ali só
+ * tentaria capturar de novo.
+ */
+async function criarCobranca(corpo: object) {
+  const comSplit = { ...corpo, split: splitDaCobranca() };
+  try {
+    return await asaas("/payments", { method: "POST", body: JSON.stringify(comSplit) });
+  } catch (erro) {
+    const motivo = erro instanceof Error ? erro.message : String(erro);
+    if (!/split|wallet/i.test(motivo)) throw erro;
+
+    console.error("[split] repasse recusado, criando cobranca SEM repasse:", motivo);
+    const cobranca = await asaas("/payments", { method: "POST", body: JSON.stringify(corpo) });
+    void alertarSplitRecusado(motivo, cobranca.id ?? "sem id").catch(() => {});
+    return cobranca;
+  }
+}
+
 const PAGO = new Set(["RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH"]);
 const RESEND_FROM = "MakersHub <equipe@makershub.app.br>";
 const ACTIVATION_TTL_MS = 30 * 60_000;
@@ -305,16 +366,9 @@ export const iniciarPix = createServerFn({ method: "POST" })
     });
     if (!cliente.id) throw new Error("Asaas não retornou o cliente da cobrança.");
 
-    const cobranca = await asaas("/payments", {
-      method: "POST",
-      body: JSON.stringify({
-        customer: cliente.id,
-        billingType: "PIX",
-        value: PRECO,
-        dueDate: hoje,
-        description: "MakersHub — acesso anual",
-      }),
-    });
+    const cobranca = await criarCobranca(
+      corpoCobrancaPix({ customerId: cliente.id, dueDate: hoje }),
+    );
     if (!cobranca.id) throw new Error("Asaas não retornou o identificador do pagamento.");
 
     // CRÍTICO: persiste o pedido ANTES de buscar o QR. Se o QR falhar (ex.: conta
@@ -524,14 +578,10 @@ export const pagarCartao = createServerFn({ method: "POST" })
     if (!cliente.id) throw new Error("Asaas não retornou o cliente da cobrança.");
 
     const hoje = new Date().toISOString().slice(0, 10);
-    const cobranca = await asaas("/payments", {
-      method: "POST",
-      body: JSON.stringify({
-        customer: cliente.id,
-        billingType: "CREDIT_CARD",
-        value: PRECO,
+    const cobranca = await criarCobranca(
+      corpoCobrancaCartao({
+        customerId: cliente.id,
         dueDate: hoje,
-        description: "MakersHub — acesso anual",
         remoteIp,
         creditCard: {
           holderName: data.card.holderName,
@@ -550,7 +600,7 @@ export const pagarCartao = createServerFn({ method: "POST" })
           phone: onlyDigits(data.telefone),
         },
       }),
-    });
+    );
     if (!cobranca.id) throw new Error("Asaas não retornou o identificador do pagamento.");
 
     if (!PAGO.has(cobranca.status ?? "")) {
@@ -621,20 +671,18 @@ export const criarPix = createServerFn({ method: "POST" })
       method: "POST",
       body: JSON.stringify({ name: data.nome, cpfCnpj: onlyDigits(data.cpfCnpj), email }),
     });
+    if (!cliente.id) throw new Error("Asaas não retornou o cliente da cobrança.");
+
     const hoje = new Date().toISOString().slice(0, 10);
-    const cobranca = await asaas("/payments", {
-      method: "POST",
-      body: JSON.stringify({
-        customer: cliente.id,
-        billingType: "PIX",
-        value: PRECO,
+    const cobranca = await criarCobranca(
+      corpoCobrancaPix({
+        customerId: cliente.id,
         dueDate: hoje,
-        description: "MakersHub — acesso anual",
         // Vínculo forte cobrança↔usuário: finalizarPix confere este campo
         // antes de liberar (mais forte que o match por e-mail).
         externalReference: context.userId,
       }),
-    });
+    );
     let brCode = "",
       brCodeBase64 = "",
       expiresAt = "",
