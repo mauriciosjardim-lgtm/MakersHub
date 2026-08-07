@@ -3,6 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { CurrencyInput } from "@/components/ui/currency-input";
+import { DateTimePicker } from "@/components/ui/date-time-picker";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -16,7 +17,7 @@ import {
   CATEGORIAS_RECEITA, CATEGORIAS_DESPESA,
   type LancTipo, type Lancamento,
 } from "@/lib/mock/financeiro";
-import { financeiroActions, useFinanceiroSupa } from "@/lib/hooks/useFinanceiro";
+import { financeiroActions } from "@/lib/hooks/useFinanceiro";
 import { useProjetos } from "@/lib/hooks/useProjetos";
 import { useCarteiras, getCarteiraAtiva } from "@/lib/hooks/useCarteiras";
 import { cn } from "@/lib/utils";
@@ -30,6 +31,8 @@ const FREQ_OPCOES = [
   { value: "semestral",   label: "Semestral" },
   { value: "anual",       label: "Anual" },
 ];
+
+const CATEGORIA_PERSONALIZADA = "__custom__";
 
 function addPeriod(baseIso: string, freq: string, n: number): string {
   const d = new Date(baseIso + "T12:00:00");
@@ -55,6 +58,7 @@ interface Props {
 export function NovoLancamentoModal({ open, onOpenChange, tipoInicial = "receita", editar }: Props) {
   const [tipo, setTipo] = useState<LancTipo>(tipoInicial);
   const [categoria, setCategoria] = useState("");
+  const [categoriaPersonalizada, setCategoriaPersonalizada] = useState("");
   const [descricao, setDescricao] = useState("");
   const [valor, setValor] = useState(0);
   const [vencimento, setVencimento] = useState(() => new Date().toISOString().slice(0, 10));
@@ -77,17 +81,41 @@ export function NovoLancamentoModal({ open, onOpenChange, tipoInicial = "receita
 
   const [salvando, setSalvando] = useState(false);
 
-  const { lancamentos } = useFinanceiroSupa();
-  const { projetos } = useProjetos();
+  const { projetos, loading: projetosLoading } = useProjetos();
   const { carteiras } = useCarteiras();
   const categorias = tipo === "receita" ? CATEGORIAS_RECEITA : CATEGORIAS_DESPESA;
-  const clientes = useMemo(() => Array.from(new Set(lancamentos.map(l => l.cliente).filter(Boolean))) as string[], [lancamentos]);
+  const clientes = useMemo(() => {
+    const nomes = new Map<string, string>();
+    projetos.forEach((projeto) => {
+      const nome = projeto.cliente.trim();
+      if (nome) nomes.set(nome.toLocaleLowerCase("pt-BR"), nome);
+    });
+    return [...nomes.values()].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [projetos]);
+  const projetosDoCliente = useMemo(() => {
+    const nomeSelecionado = cliente.trim().toLocaleLowerCase("pt-BR");
+    if (!nomeSelecionado) return [];
+    return projetos
+      .filter(
+        (projeto) => projeto.cliente.trim().toLocaleLowerCase("pt-BR") === nomeSelecionado,
+      )
+      .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+  }, [cliente, projetos]);
+
+  const selecionarCliente = (nome: string) => {
+    setCliente(nome === "__none__" ? "" : nome);
+    setProjetoId("");
+  };
 
   useEffect(() => {
     if (open) {
       if (editar) {
         setTipo(editar.tipo);
-        setCategoria(editar.categoria);
+        const categoriasDaEdicao =
+          editar.tipo === "receita" ? CATEGORIAS_RECEITA : CATEGORIAS_DESPESA;
+        const categoriaCadastrada = categoriasDaEdicao.includes(editar.categoria);
+        setCategoria(categoriaCadastrada ? editar.categoria : CATEGORIA_PERSONALIZADA);
+        setCategoriaPersonalizada(categoriaCadastrada ? "" : editar.categoria);
         setDescricao(editar.descricao);
         setValor(editar.valor);
         setVencimento(editar.vencimento.slice(0, 10));
@@ -101,6 +129,7 @@ export function NovoLancamentoModal({ open, onOpenChange, tipoInicial = "receita
       } else {
         setTipo(tipoInicial);
         setCategoria(tipoInicial === "receita" ? "Projeto" : "Equipe");
+        setCategoriaPersonalizada("");
         setDescricao(""); setValor(0);
         setVencimento(new Date().toISOString().slice(0, 10));
         setCliente(""); setProjetoId(""); setCarteiraId(getCarteiraAtiva() ?? ""); setFormaPagamento("PIX");
@@ -126,6 +155,10 @@ export function NovoLancamentoModal({ open, onOpenChange, tipoInicial = "receita
   const salvar = async () => {
     if (!descricao.trim()) { toast.error("Descrição é obrigatória."); return; }
     if (valor <= 0) { toast.error("Informe um valor válido."); return; }
+    if (!vencimento) { toast.error("Informe o vencimento."); return; }
+    const categoriaFinal =
+      categoria === CATEGORIA_PERSONALIZADA ? categoriaPersonalizada.trim() : categoria.trim();
+    if (!categoriaFinal) { toast.error("Informe a categoria."); return; }
 
     setSalvando(true);
     try {
@@ -135,7 +168,7 @@ export function NovoLancamentoModal({ open, onOpenChange, tipoInicial = "receita
       }
 
       const base = {
-        tipo, categoria: categoria || "Outros", descricao: descricao.trim(),
+        tipo, categoria: categoriaFinal, descricao: descricao.trim(),
         valor,
         vencimento: new Date(vencimento + "T12:00:00").toISOString(),
         pagamentoEm: pago ? new Date(vencimento + "T12:00:00").toISOString() : null,
@@ -192,7 +225,7 @@ export function NovoLancamentoModal({ open, onOpenChange, tipoInicial = "receita
           <div className="grid grid-cols-2 gap-2 rounded-lg border border-border bg-surface-1 p-1">
             <button
               type="button"
-              onClick={() => { setTipo("receita"); setCategoria("Projeto"); }}
+              onClick={() => { setTipo("receita"); setCategoria("Projeto"); setCategoriaPersonalizada(""); }}
               className={cn(
                 "inline-flex items-center justify-center gap-1.5 rounded-md py-2 text-xs font-medium transition",
                 tipo === "receita" ? "bg-surface-3 text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
@@ -203,7 +236,7 @@ export function NovoLancamentoModal({ open, onOpenChange, tipoInicial = "receita
             </button>
             <button
               type="button"
-              onClick={() => { setTipo("despesa"); setCategoria("Equipe"); }}
+              onClick={() => { setTipo("despesa"); setCategoria("Equipe"); setCategoriaPersonalizada(""); }}
               className={cn(
                 "inline-flex items-center justify-center gap-1.5 rounded-md py-2 text-xs font-medium transition",
                 tipo === "despesa" ? "bg-surface-3 text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
@@ -220,25 +253,45 @@ export function NovoLancamentoModal({ open, onOpenChange, tipoInicial = "receita
           </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="grid gap-1.5">
+            <div className="grid min-w-0 gap-1.5">
               <Label>Valor (R$)</Label>
               <CurrencyInput value={valor} onValueChange={setValor} />
             </div>
             <div className="grid gap-1.5">
               <Label>Vencimento</Label>
-              <Input type="date" value={vencimento} onChange={e => setVencimento(e.target.value)} />
+              <DateTimePicker
+                hideTime
+                value={vencimento ? `${vencimento}T12:00` : ""}
+                onChange={(value) => setVencimento(value.slice(0, 10))}
+                placeholder="Selecionar vencimento"
+              />
             </div>
           </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="grid gap-1.5">
               <Label>Categoria</Label>
-              <Select value={categoria} onValueChange={setCategoria}>
+              <Select
+                value={categoria}
+                onValueChange={(value) => {
+                  setCategoria(value);
+                  if (value !== CATEGORIA_PERSONALIZADA) setCategoriaPersonalizada("");
+                }}
+              >
                 <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
                 <SelectContent>
                   {categorias.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                  <SelectItem value={CATEGORIA_PERSONALIZADA}>Personalizada…</SelectItem>
                 </SelectContent>
               </Select>
+              {categoria === CATEGORIA_PERSONALIZADA && (
+                <Input
+                  value={categoriaPersonalizada}
+                  onChange={(event) => setCategoriaPersonalizada(event.target.value)}
+                  placeholder="Nome da categoria"
+                  autoFocus
+                />
+              )}
             </div>
             <div className="grid gap-1.5">
               <Label>Carteira</Label>
@@ -253,10 +306,10 @@ export function NovoLancamentoModal({ open, onOpenChange, tipoInicial = "receita
           </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <div className="grid gap-1.5">
+            <div className="grid min-w-0 gap-1.5">
               <Label>Forma de pagamento</Label>
               <Select value={formaPagamento} onValueChange={setFormaPagamento}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger className="min-w-0 overflow-hidden [&>span]:min-w-0 [&>span]:truncate"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {["PIX", "Transferência", "Boleto", "Cartão", "Dinheiro"].map(f => (
                     <SelectItem key={f} value={f}>{f}</SelectItem>
@@ -264,22 +317,43 @@ export function NovoLancamentoModal({ open, onOpenChange, tipoInicial = "receita
                 </SelectContent>
               </Select>
             </div>
-            <div className="grid gap-1.5">
+            <div className="grid min-w-0 gap-1.5">
               <Label>Cliente (opcional)</Label>
-              <Input list="clientes-fin" value={cliente} onChange={e => setCliente(e.target.value)} placeholder="Nome do cliente" />
-              <datalist id="clientes-fin">
-                {clientes.map(c => <option key={c} value={c} />)}
-              </datalist>
-            </div>
-            <div className="grid gap-1.5">
-              <Label>Projeto (opcional)</Label>
-              <Select value={projetoId || "__none__"} onValueChange={v => setProjetoId(v === "__none__" ? "" : v)}>
-                <SelectTrigger><SelectValue placeholder="Nenhum" /></SelectTrigger>
+              <Select value={cliente || "__none__"} onValueChange={selecionarCliente}>
+                <SelectTrigger className="min-w-0 overflow-hidden [&>span]:min-w-0 [&>span]:truncate">
+                  <SelectValue placeholder="Selecione um cliente" />
+                </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__none__">Nenhum</SelectItem>
-                  {projetos.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+                  <SelectItem value="__none__">Nenhum cliente</SelectItem>
+                  {clientes.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                 </SelectContent>
               </Select>
+              {!projetosLoading && clientes.length === 0 && (
+                <p className="text-[11px] text-muted-foreground">
+                  Crie um cliente na seção Projetos primeiro.
+                </p>
+              )}
+            </div>
+            <div className="grid min-w-0 gap-1.5">
+              <Label>Projeto (opcional)</Label>
+              <Select
+                value={projetoId || "__none__"}
+                onValueChange={v => setProjetoId(v === "__none__" ? "" : v)}
+                disabled={!cliente || projetosLoading}
+              >
+                <SelectTrigger className="min-w-0 overflow-hidden [&>span]:min-w-0 [&>span]:truncate">
+                  <SelectValue placeholder={cliente ? "Selecione um projeto" : "Escolha o cliente primeiro"} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Nenhum</SelectItem>
+                  {projetosDoCliente.map(p => <SelectItem key={p.id} value={p.id}>{p.nome}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              {cliente && !projetosLoading && projetosDoCliente.length === 0 && (
+                <p className="text-[11px] text-muted-foreground">
+                  Este cliente ainda não tem projetos.
+                </p>
+              )}
             </div>
           </div>
 
