@@ -1,13 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  ArrowUpRight,
-  Check,
-  ChevronsUpDown,
-  FolderKanban,
-  MonitorPlay,
-  UsersRound,
-} from "lucide-react";
+import { ArrowUpRight, Check, ChevronsUpDown, FolderKanban } from "lucide-react";
+import { ArrowRight2, Box, Clock, Edit2, Monitor, Profile2User, TickCircle } from "iconsax-react";
+import type { Icon as IconsaxIcon } from "iconsax-react";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -17,6 +12,13 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ClientPortalWorkspace } from "@/components/projetos/client-portal-workspace";
 import { ProjetosErrorState } from "@/components/projetos/projetos-error-state";
@@ -44,6 +46,7 @@ function ClientAreaManager() {
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [clientPickerOpen, setClientPickerOpen] = useState(false);
+  const [clientDetailsOpen, setClientDetailsOpen] = useState(false);
 
   const loadReviews = useCallback(async () => {
     setReviewsLoading(true);
@@ -95,18 +98,15 @@ function ClientAreaManager() {
     : [];
   const selectedProject =
     clientProjects.find((project) => project.id === selectedProjectId) ?? clientProjects[0];
-  const pending = reviews.filter((review) => review.status === "pending");
-  const changes = reviews.filter((review) => review.status === "changes_requested");
-  const deliveries = reviews.filter(
-    (review) => review.kind === "delivery" && review.status !== "archived",
-  );
-  const published = activeProjects.filter((project) => project.portalVisible);
   const clientReviews = selectedClient
     ? reviews.filter((review) => clientProjects.some((project) => project.id === review.projectId))
     : [];
   const clientPending = clientReviews.filter((review) => review.status === "pending").length;
   const clientChanges = clientReviews.filter(
     (review) => review.status === "changes_requested",
+  ).length;
+  const clientDeliveries = clientReviews.filter(
+    (review) => review.kind === "delivery" && review.status !== "archived",
   ).length;
   const dataLoading = loading || clientsLoading || reviewsLoading;
   const dataError = error || clientsError || reviewsError;
@@ -125,89 +125,46 @@ function ClientAreaManager() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-[1600px] space-y-6 px-4 py-6 md:px-8 md:py-8">
-      <header className="flex flex-wrap items-end justify-between gap-5">
+    <div className="project-kanban-ambient mx-auto w-full max-w-[1600px] space-y-5 px-4 py-5 md:px-8 md:py-7">
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <div className="flex items-center gap-2 text-primary">
-            <MonitorPlay className="size-4" />
-            <span className="text-[10px] font-semibold uppercase tracking-[.18em]">
-              Makers Members
-            </span>
-          </div>
-          <h1 className="mt-2 font-display text-3xl font-semibold tracking-tight">
-            Central do cliente
-          </h1>
-          <p className="mt-1 max-w-xl text-xs leading-5 text-muted-foreground">
-            Crie acessos, escolha o que será publicado e acompanhe aprovações e entregas.
+          <h1 className="font-display text-3xl font-bold tracking-[-.035em]">Área do cliente</h1>
+          <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+            Aprovações, entregas e acessos em um só lugar.
           </p>
-        </div>
-        <div className="grid w-full grid-cols-2 overflow-hidden rounded-xl border border-border bg-surface-1/35 sm:w-auto sm:grid-cols-4">
-          <CompactMetric
-            label="Publicados"
-            value={dataLoading ? "—" : published.length}
-            tone="text-primary"
-          />
-          <CompactMetric
-            label="Aguardando"
-            value={dataLoading ? "—" : pending.length}
-            tone="text-warning"
-          />
-          <CompactMetric
-            label="Ajustes"
-            value={dataLoading ? "—" : changes.length}
-            tone="text-destructive"
-          />
-          <CompactMetric
-            label="Entregas"
-            value={dataLoading ? "—" : deliveries.length}
-            tone="text-success"
-          />
         </div>
       </header>
 
-      <section className="relative overflow-hidden rounded-2xl border border-border bg-surface-1/35">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_8%_0%,hsl(var(--primary)/.09),transparent_32%)]" />
-        <div className="relative grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end lg:p-5">
-          <div className="max-w-2xl">
-            <div className="mb-2 flex items-center justify-between gap-3">
-              <div>
-                <p className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[.16em] text-primary">
-                  <UsersRound className="size-3.5" />
-                  Cliente ativo
-                </p>
-                <p className="mt-1 text-[10px] text-muted-foreground">
-                  Pesquise e troque de portal sem sair desta tela.
-                </p>
-              </div>
-              <span className="rounded-full border border-border/70 bg-background/25 px-2.5 py-1 text-[9px] text-muted-foreground">
-                {dataLoading ? "Carregando…" : `${canonicalClients.length} clientes`}
-              </span>
-            </div>
-
+      <section
+        className="kb-project-nav relative overflow-hidden rounded-2xl"
+        style={
+          {
+            "--active-client": "var(--primary)",
+          } as React.CSSProperties
+        }
+      >
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_8%_0%,color-mix(in_srgb,var(--active-client)_8%,transparent),transparent_34%)]" />
+        <div className="relative flex flex-col gap-2 p-2 lg:flex-row lg:items-center">
+          <div className="w-full shrink-0 lg:w-[360px] xl:w-[420px]">
             <Popover open={clientPickerOpen} onOpenChange={setClientPickerOpen}>
               <PopoverTrigger asChild>
                 <Button
                   variant="outline"
                   role="combobox"
                   aria-expanded={clientPickerOpen}
-                  className="h-auto w-full justify-between rounded-xl border-border/80 bg-background/35 px-3 py-3 text-left hover:border-primary/30 hover:bg-surface-2/45"
+                  className="h-12 w-full justify-between rounded-xl border-transparent bg-transparent px-2.5 text-left hover:border-[color-mix(in_srgb,var(--active-client)_30%,transparent)] hover:bg-white/[.035]"
                   disabled={dataLoading || canonicalClients.length === 0}
                 >
                   {selectedClient ? (
                     <span className="flex min-w-0 items-center gap-3">
-                      <span
-                        className="grid size-10 shrink-0 place-items-center rounded-xl text-[11px] font-bold text-black shadow-lg"
-                        style={{
-                          backgroundColor: selectedClient.accentColor || "var(--primary)",
-                        }}
-                      >
+                      <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-[var(--primary-ui)] text-xs font-bold text-[var(--primary-fg)]">
                         {initials(selectedClient.nome)}
                       </span>
                       <span className="min-w-0">
-                        <span className="block truncate text-sm font-semibold">
+                        <span className="block truncate font-display text-sm font-bold">
                           {selectedClient.nome}
                         </span>
-                        <span className="mt-0.5 block text-[10px] font-normal text-muted-foreground">
+                        <span className="mt-0.5 block text-[11px] font-normal text-muted-foreground">
                           {clientProjects.length} projeto
                           {clientProjects.length === 1 ? "" : "s"} · {clientPending + clientChanges}{" "}
                           pendência
@@ -216,7 +173,7 @@ function ClientAreaManager() {
                       </span>
                     </span>
                   ) : (
-                    <span className="text-sm text-muted-foreground">
+                    <span className="text-sm font-medium text-muted-foreground">
                       {dataLoading ? "Carregando clientes…" : "Selecione um cliente"}
                     </span>
                   )}
@@ -251,21 +208,16 @@ function ClientAreaManager() {
                               setSelectedProjectId(null);
                               setClientPickerOpen(false);
                             }}
-                            className="gap-3 rounded-lg px-2.5 py-2.5"
+                            className="gap-3 rounded-xl px-3 py-3"
                           >
-                            <span
-                              className="grid size-8 shrink-0 place-items-center rounded-lg text-[9px] font-bold text-black"
-                              style={{
-                                backgroundColor: client.accentColor || "var(--primary)",
-                              }}
-                            >
+                            <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[var(--primary-ui)] text-xs font-bold text-[var(--primary-fg)]">
                               {initials(client.nome)}
                             </span>
                             <span className="min-w-0 flex-1">
-                              <span className="block truncate text-xs font-medium">
+                              <span className="block truncate text-sm font-semibold">
                                 {client.nome}
                               </span>
-                              <span className="mt-0.5 block text-[9px] text-muted-foreground">
+                              <span className="mt-0.5 block text-xs text-muted-foreground">
                                 {projects.length} projeto{projects.length === 1 ? "" : "s"} ·{" "}
                                 {projects.filter((project) => project.portalVisible).length}{" "}
                                 publicado
@@ -275,7 +227,7 @@ function ClientAreaManager() {
                               </span>
                             </span>
                             {reviewCount > 0 && (
-                              <span className="rounded-full bg-warning px-1.5 py-0.5 text-[9px] font-bold text-black">
+                              <span className="rounded-full bg-warning px-2 py-0.5 text-xs font-bold text-black">
                                 {reviewCount}
                               </span>
                             )}
@@ -295,23 +247,52 @@ function ClientAreaManager() {
             </Popover>
           </div>
 
+          {selectedClient && selectedProject && (
+            <nav
+              className="kb-scrollbar flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto"
+              aria-label="Projetos deste cliente"
+            >
+              {clientProjects.map((project) => (
+                <button
+                  key={project.id}
+                  onClick={() => setSelectedProjectId(project.id)}
+                  className={cn(
+                    "flex h-11 min-w-[148px] flex-1 items-center justify-between gap-3 rounded-xl border px-3 text-left transition-[color,border-color,background-color,box-shadow]",
+                    selectedProject.id === project.id
+                      ? "border-[color-mix(in_srgb,var(--active-client)_42%,transparent)] bg-[color-mix(in_srgb,var(--active-client)_8%,transparent)] shadow-[inset_0_1px_0_rgba(255,255,255,.05)]"
+                      : "border-transparent text-muted-foreground hover:border-white/[.1] hover:bg-white/[.03]",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "truncate text-[13px] font-bold",
+                      selectedProject.id === project.id && "text-[var(--active-client)]",
+                    )}
+                  >
+                    {project.nome}
+                  </span>
+                  <span
+                    className={cn(
+                      "size-2 shrink-0 rounded-full",
+                      project.portalVisible
+                        ? "bg-success shadow-[0_0_12px_-2px_currentColor]"
+                        : "bg-muted-foreground/35",
+                    )}
+                  />
+                </button>
+              ))}
+            </nav>
+          )}
+
           {selectedClient && (
-            <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-              <SelectionMetric label="Projetos" value={clientProjects.length} />
-              <SelectionMetric
-                label="Publicados"
-                value={clientProjects.filter((project) => project.portalVisible).length}
-                tone="text-success"
-              />
-              <SelectionMetric
-                label="Pendências"
-                value={clientPending + clientChanges}
-                tone={clientPending + clientChanges > 0 ? "text-warning" : "text-muted-foreground"}
-              />
-              <Button variant="outline" size="sm" asChild className="ml-1">
-                <a href={`/projetos/${selectedClient.id}`}>
-                  Abrir workspace <ArrowUpRight className="size-3.5" />
-                </a>
+            <div className="flex shrink-0 items-center lg:justify-end">
+              <Button
+                variant="outline"
+                onClick={() => setClientDetailsOpen(true)}
+                className="h-11 rounded-xl border-white/[.08] bg-white/[.025] px-4 font-semibold"
+              >
+                <Profile2User size={18} color="currentColor" variant="Bulk" />
+                Detalhes do cliente
               </Button>
             </div>
           )}
@@ -322,54 +303,6 @@ function ClientAreaManager() {
         <main className="min-w-0 space-y-4">
           {selectedProject ? (
             <div className="space-y-4">
-              <section className="rounded-2xl border border-border bg-surface-1/35 p-3">
-                <div className="flex flex-wrap items-center justify-between gap-3 px-1 pb-3">
-                  <div>
-                    <p className="text-sm font-semibold">Projetos deste cliente</p>
-                    <p className="mt-0.5 text-[10px] text-muted-foreground">
-                      Selecione o projeto que deseja publicar ou enviar para aprovação.
-                    </p>
-                  </div>
-                  <span className="rounded-lg bg-surface-2 px-2.5 py-1 text-[9px] font-medium text-muted-foreground">
-                    {clientProjects.filter((project) => project.portalVisible).length}/
-                    {clientProjects.length} publicados
-                  </span>
-                </div>
-                <div className="flex gap-2 overflow-x-auto">
-                  {clientProjects.map((project) => (
-                    <button
-                      key={project.id}
-                      onClick={() => setSelectedProjectId(project.id)}
-                      className={cn(
-                        "min-w-[180px] shrink-0 rounded-xl border p-3 text-left text-xs transition",
-                        selectedProject.id === project.id
-                          ? "border-primary/40 bg-primary/[0.08]"
-                          : "border-border/60 bg-card/35 text-muted-foreground hover:border-primary/20",
-                      )}
-                    >
-                      <span className="flex items-center justify-between gap-3">
-                        <span
-                          className={cn(
-                            "truncate font-medium",
-                            selectedProject.id === project.id && "text-foreground",
-                          )}
-                        >
-                          {project.nome}
-                        </span>
-                        <span
-                          className={cn(
-                            "size-2 shrink-0 rounded-full",
-                            project.portalVisible ? "bg-success" : "bg-muted-foreground/35",
-                          )}
-                        />
-                      </span>
-                      <span className="mt-2 block text-[9px]">
-                        {project.portalVisible ? "Visível no portal" : "Oculto do cliente"}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </section>
               <ClientPortalWorkspace
                 key={selectedClient.id}
                 project={selectedProject}
@@ -378,23 +311,23 @@ function ClientAreaManager() {
               />
             </div>
           ) : (
-            <div className="grid min-h-72 place-items-center rounded-2xl border border-dashed border-border bg-surface-1/20 text-center">
+            <div className="grid min-h-80 place-items-center rounded-2xl border border-dashed border-white/[.09] bg-white/[.018] px-6 text-center">
               <div>
-                <span className="mx-auto grid size-12 place-items-center rounded-2xl bg-surface-2 text-muted-foreground">
-                  <FolderKanban className="size-5" />
+                <span className="kb-workspace-icon mx-auto grid size-14 place-items-center rounded-2xl">
+                  <FolderKanban className="size-6" />
                 </span>
-                <p className="mt-3 text-sm font-medium">
+                <p className="mt-4 font-display text-lg font-bold">
                   {selectedClient?.nome || "Este cliente"} ainda não possui projetos
                 </p>
-                <p className="mt-1 text-xs text-muted-foreground">
+                <p className="mt-1.5 text-sm text-muted-foreground">
                   Abra o workspace do cliente para criar o primeiro projeto.
                 </p>
                 {selectedClient && (
                   <a
                     href={`/projetos/${selectedClient.id}`}
-                    className="mt-4 inline-flex rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground"
+                    className="mt-5 inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-bold text-primary-foreground"
                   >
-                    Abrir cliente
+                    Abrir projetos <ArrowRight2 size={15} color="currentColor" variant="Linear" />
                   </a>
                 )}
               </div>
@@ -402,40 +335,179 @@ function ClientAreaManager() {
           )}
         </main>
       )}
+
+      {!selectedClient && !dataLoading && (
+        <section className="grid min-h-[340px] place-items-center rounded-2xl border border-dashed border-white/[.09] bg-white/[.015] px-6 py-10 text-center">
+          <div className="max-w-xl">
+            <span className="kb-workspace-icon mx-auto grid size-16 place-items-center rounded-2xl">
+              <Monitor size={28} color="currentColor" variant="Bulk" />
+            </span>
+            <h2 className="mt-5 font-display text-xl font-bold tracking-[-.02em]">
+              Escolha um cliente para começar
+            </h2>
+            <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-muted-foreground">
+              Você poderá definir o que aparece no portal, enviar materiais para aprovação,
+              organizar entregas e administrar os acessos.
+            </p>
+            <div className="mt-6 grid gap-2 text-left sm:grid-cols-3">
+              {[
+                ["01", "Publicar status"],
+                ["02", "Receber aprovações"],
+                ["03", "Liberar entregas"],
+              ].map(([step, label]) => (
+                <div
+                  key={step}
+                  className="rounded-xl border border-white/[.065] bg-white/[.02] p-3"
+                >
+                  <span className="text-xs font-bold text-primary">{step}</span>
+                  <p className="mt-1 text-[13px] font-semibold">{label}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {selectedClient && (
+        <Dialog open={clientDetailsOpen} onOpenChange={setClientDetailsOpen}>
+          <DialogContent
+            className="kb-form-dialog max-h-[90vh] max-w-2xl overflow-y-auto p-0"
+            style={
+              {
+                "--active-client": "var(--primary)",
+              } as React.CSSProperties
+            }
+          >
+            <DialogHeader className="border-b border-white/[.07] px-6 pb-5 pt-6 text-left">
+              <div className="flex items-center gap-3.5">
+                <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-[var(--primary-ui)] text-sm font-bold text-[var(--primary-fg)] shadow-[0_18px_36px_-22px_var(--primary)]">
+                  {initials(selectedClient.nome)}
+                </span>
+                <div className="min-w-0">
+                  <DialogTitle className="font-display text-2xl font-bold tracking-[-.025em]">
+                    Detalhes do cliente
+                  </DialogTitle>
+                  <DialogDescription className="mt-1 text-sm">
+                    {selectedClient.nome}
+                  </DialogDescription>
+                </div>
+              </div>
+            </DialogHeader>
+
+            <div className="space-y-4 p-6">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <PortalMetric
+                  icon={Box}
+                  label="Projetos"
+                  value={clientProjects.length}
+                  tone="text-foreground"
+                />
+                <PortalMetric
+                  icon={TickCircle}
+                  label="Publicados"
+                  value={clientProjects.filter((project) => project.portalVisible).length}
+                  tone="text-success"
+                />
+                <PortalMetric
+                  icon={Clock}
+                  label="Aguardando"
+                  value={clientPending}
+                  tone="text-warning"
+                />
+                <PortalMetric
+                  icon={Edit2}
+                  label="Ajustes"
+                  value={clientChanges}
+                  tone="text-destructive"
+                />
+                <PortalMetric
+                  icon={Box}
+                  label="Entregas"
+                  value={clientDeliveries}
+                  tone="text-info"
+                />
+                <PortalMetric
+                  icon={Monitor}
+                  label="Ocultos"
+                  value={clientProjects.filter((project) => !project.portalVisible).length}
+                  tone="text-muted-foreground"
+                />
+              </div>
+
+              <section className="overflow-hidden rounded-2xl border border-white/[.075] bg-white/[.025]">
+                <div className="flex items-center justify-between gap-3 border-b border-white/[.07] px-4 py-3.5">
+                  <div className="flex items-center gap-2.5">
+                    <span className="kb-workspace-icon grid size-9 place-items-center rounded-xl text-[var(--active-client)]">
+                      <Box size={18} color="currentColor" variant="Bulk" />
+                    </span>
+                    <p className="font-display text-sm font-bold">Projetos do cliente</p>
+                  </div>
+                  <span className="text-xs font-medium text-muted-foreground">
+                    {clientProjects.length} no total
+                  </span>
+                </div>
+                <div className="divide-y divide-white/[.06] px-4">
+                  {clientProjects.map((project) => (
+                    <div key={project.id} className="flex items-center justify-between gap-4 py-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold">{project.nome}</p>
+                        <p className="mt-0.5 text-[11px] text-muted-foreground">
+                          {project.portalVisible ? "Disponível no portal" : "Oculto do cliente"}
+                        </p>
+                      </div>
+                      <span
+                        className={cn(
+                          "size-2 shrink-0 rounded-full",
+                          project.portalVisible ? "bg-success" : "bg-muted-foreground/35",
+                        )}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </section>
+            </div>
+
+            <div className="flex justify-end border-t border-white/[.07] px-6 py-4">
+              <Button asChild className="h-10 rounded-xl px-4 font-bold">
+                <a href={`/projetos/${selectedClient.id}`}>
+                  Abrir projetos <ArrowUpRight className="size-4" />
+                </a>
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }
 
-function CompactMetric({
+function PortalMetric({
+  icon: Icon,
   label,
   value,
   tone,
 }: {
+  icon: IconsaxIcon;
   label: string;
   value: number | string;
   tone: string;
 }) {
   return (
-    <div className="min-w-0 border-b border-r border-border/60 px-3 py-2.5 text-center even:border-r-0 sm:min-w-[82px] sm:border-b-0 sm:even:border-r sm:last:border-r-0">
-      <p className={cn("font-display text-lg font-semibold tabular-nums", tone)}>{value}</p>
-      <p className="text-[8px] uppercase tracking-wider text-muted-foreground">{label}</p>
-    </div>
-  );
-}
-
-function SelectionMetric({
-  label,
-  value,
-  tone = "text-foreground",
-}: {
-  label: string;
-  value: number;
-  tone?: string;
-}) {
-  return (
-    <div className="min-w-[72px] rounded-xl border border-border/65 bg-background/25 px-3 py-2 text-center">
-      <p className={cn("font-display text-base font-semibold tabular-nums", tone)}>{value}</p>
-      <p className="mt-0.5 text-[7px] uppercase tracking-[.14em] text-muted-foreground">{label}</p>
+    <div className="flex min-w-0 items-center gap-3 rounded-2xl border border-white/[.07] bg-white/[.025] p-3.5 shadow-[0_18px_44px_-38px_rgba(0,0,0,.9)]">
+      <span
+        className={cn(
+          "kb-workspace-icon grid size-10 shrink-0 place-items-center rounded-xl",
+          tone,
+        )}
+      >
+        <Icon size={21} color="currentColor" variant="Bulk" />
+      </span>
+      <div className="min-w-0">
+        <p className="truncate text-xs font-bold uppercase tracking-[.08em] text-muted-foreground">
+          {label}
+        </p>
+        <p className={cn("mt-1 font-display text-xl font-bold tabular-nums", tone)}>{value}</p>
+      </div>
     </div>
   );
 }

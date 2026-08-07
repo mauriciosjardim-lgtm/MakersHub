@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -21,7 +22,7 @@ import {
 import { projetosActions } from "@/lib/hooks/useProjetos";
 import { comercial } from "@/lib/hooks/useComercial";
 import { MembrosSelect } from "@/components/projetos/membros-select";
-import { Trash } from "iconsax-react";
+import { DocumentText1, Trash } from "iconsax-react";
 import { useAuth } from "@/lib/auth";
 import { useProjetos } from "@/lib/hooks/useProjetos";
 import { usuarioTemAcesso, type Permissoes } from "@/lib/permissoes";
@@ -159,38 +160,61 @@ export function ProjetoModal({
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && !salvando && !removendo && onClose()}>
-      <DialogContent className="max-w-xl grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden p-0">
-        <DialogHeader className="px-4 pt-5 sm:px-6 sm:pt-6">
-          <DialogTitle className="font-display">
-            {editando ? "Editar projeto" : "Novo projeto"}
-          </DialogTitle>
+      <DialogContent className="kb-form-dialog max-w-3xl grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0">
+        <DialogHeader className="kb-form-header border-b border-white/[.07] px-5 py-5 pr-14 sm:px-6">
+          <div className="flex items-start gap-3.5">
+            <span className="kb-form-icon grid size-11 shrink-0 place-items-center rounded-xl">
+              <DocumentText1 size={22} color="currentColor" variant="Bulk" />
+            </span>
+            <div className="min-w-0">
+              <DialogTitle className="font-display text-2xl font-bold tracking-[-.025em]">
+                {editando ? "Editar projeto" : "Novo projeto"}
+              </DialogTitle>
+              <DialogDescription className="mt-1 text-sm leading-relaxed">
+                {editando
+                  ? "Atualize o planejamento e as informações essenciais do projeto."
+                  : "Defina o essencial agora. O restante evolui junto com a produção."}
+              </DialogDescription>
+            </div>
+          </div>
         </DialogHeader>
-        <div className="space-y-3 overflow-y-auto px-4 pb-3 sm:px-6">
-          <div className="space-y-1.5">
-            <Label className="text-xs">Nome do projeto</Label>
-            <Input
-              value={nome}
-              onChange={(e) => setNome(e.target.value)}
-              placeholder="Ex: Campanha verão"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs">Cliente</Label>
-            {clienteInicial && !editando ? (
-              <div className="flex h-10 items-center rounded-lg border border-border/60 bg-surface-1/40 px-3 text-sm font-medium">
-                {clienteInicial}
-              </div>
-            ) : (
+        <div className="kb-scrollbar grid gap-4 overflow-y-auto px-5 py-5 sm:px-6 lg:grid-cols-2">
+          <section className="kb-form-section grid gap-4 sm:grid-cols-[minmax(0,1.25fr)_minmax(0,.75fr)] lg:col-span-2">
+            <div className="space-y-2">
+              <Label className="kb-form-label">Nome do projeto</Label>
               <Input
-                value={cliente}
-                onChange={(e) => setCliente(e.target.value)}
-                placeholder="Ex: Aurora Filmes"
+                className="kb-form-control"
+                value={nome}
+                onChange={(e) => setNome(e.target.value)}
+                placeholder="Ex: Campanha de verão"
+                autoFocus
               />
-            )}
-          </div>
-          <div className="space-y-2">
-            <Label className="text-xs">Cor do projeto</Label>
-            <div className="flex flex-wrap gap-2 rounded-xl border border-border/60 bg-surface-1/30 p-3">
+            </div>
+            <div className="space-y-2">
+              <Label className="kb-form-label">Cliente</Label>
+              {clienteInicial && !editando ? (
+                <div className="kb-form-control flex items-center px-3.5 text-sm font-semibold">
+                  {clienteInicial}
+                </div>
+              ) : (
+                <Input
+                  className="kb-form-control"
+                  value={cliente}
+                  onChange={(e) => setCliente(e.target.value)}
+                  placeholder="Ex: Aurora Filmes"
+                />
+              )}
+            </div>
+          </section>
+
+          <section className="kb-form-section space-y-3 lg:col-span-2">
+            <div>
+              <Label className="kb-form-label">Identidade do projeto</Label>
+              <p className="mt-1 text-xs leading-relaxed text-[var(--kb-text-muted)]">
+                A cor identifica o projeto na navegação, nos glows e nos estados ativos.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2.5 rounded-xl border border-white/[.07] bg-black/10 p-3">
               {CORES_PROJETO.map((c) => (
                 <button
                   key={c}
@@ -198,14 +222,14 @@ export function ProjetoModal({
                   aria-label={`Selecionar cor ${c}`}
                   onClick={() => setCor(c)}
                   style={{ backgroundColor: c }}
-                  className={`size-6 rounded-full transition ${cor === c ? "scale-110 ring-2 ring-white ring-offset-2 ring-offset-background" : "opacity-65 hover:opacity-100"}`}
+                  className={`size-8 rounded-full transition-[transform,opacity,box-shadow] ${cor === c ? "scale-105 ring-2 ring-white ring-offset-2 ring-offset-[oklch(0.18_0.008_260)]" : "opacity-65 hover:scale-105 hover:opacity-100"}`}
                 />
               ))}
               <label
-                className={`relative grid size-6 cursor-pointer place-items-center overflow-hidden rounded-full border border-dashed border-white/40 transition hover:border-white ${!CORES_PROJETO.includes(cor) ? "ring-2 ring-white ring-offset-2 ring-offset-background" : ""}`}
+                className={`relative grid size-8 cursor-pointer place-items-center overflow-hidden rounded-full border border-dashed border-white/30 transition hover:border-white/60 ${!CORES_PROJETO.includes(cor) ? "ring-2 ring-white ring-offset-2 ring-offset-[oklch(0.18_0.008_260)]" : ""}`}
                 title="Escolher outra cor"
               >
-                <span className="text-sm leading-none text-white">+</span>
+                <span className="text-base leading-none text-white">+</span>
                 <input
                   type="color"
                   value={cor}
@@ -213,13 +237,13 @@ export function ProjetoModal({
                   className="absolute inset-0 cursor-pointer opacity-0"
                 />
               </label>
-              <div className="ml-auto flex min-w-0 items-center gap-2 text-[10px] text-muted-foreground">
-                <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: cor }} />
+              <div className="ml-auto flex min-w-0 items-center gap-2 text-xs text-[var(--kb-text-muted)]">
+                <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: cor }} />
                 <span className="font-mono">{cor}</span>
               </div>
             </div>
             {coresEmUso.length > 0 && (
-              <p className="flex items-center gap-1.5 text-[10px] text-warning">
+              <p className="flex items-center gap-2 text-xs text-warning">
                 <span className="size-1.5 rounded-full bg-warning" />
                 Esta cor já está sendo usada por{" "}
                 {coresEmUso.length === 1 ? (
@@ -230,95 +254,109 @@ export function ProjetoModal({
                 .
               </p>
             )}
-          </div>
-          <div className="space-y-2">
-            <Label className="text-xs">Planejamento de datas</Label>
-            <div className="inline-flex rounded-lg border border-border/60 bg-surface-1/40 p-1">
-              <button
-                type="button"
-                onClick={() => setModoData("sem_data")}
-                className={`rounded-md px-3 py-1.5 text-[11px] transition ${modoData === "sem_data" ? "bg-surface-3 text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
-              >
-                Sem prazo geral
-              </button>
-              <button
-                type="button"
-                onClick={() => setModoData("entrega")}
-                className={`rounded-md px-3 py-1.5 text-[11px] transition ${modoData === "entrega" ? "bg-surface-3 text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
-              >
-                Só entrega
-              </button>
-              <button
-                type="button"
-                onClick={() => setModoData("periodo")}
-                className={`rounded-md px-3 py-1.5 text-[11px] transition ${modoData === "periodo" ? "bg-surface-3 text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
-              >
-                Período
-              </button>
+          </section>
+
+          <section className="kb-form-section space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <Label className="kb-form-label">Planejamento de datas</Label>
+                <p className="mt-1 text-xs text-[var(--kb-text-muted)]">
+                  Escolha somente o nível de prazo que fizer sentido agora.
+                </p>
+              </div>
+              <div className="inline-flex rounded-xl border border-white/[.07] bg-black/10 p-1">
+                <button
+                  type="button"
+                  onClick={() => setModoData("sem_data")}
+                  className={`min-h-9 rounded-lg px-3 text-xs font-semibold transition ${modoData === "sem_data" ? "bg-white/[.08] text-[var(--kb-text)] shadow-sm" : "text-[var(--kb-text-muted)] hover:text-[var(--kb-text)]"}`}
+                >
+                  Sem prazo geral
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModoData("entrega")}
+                  className={`min-h-9 rounded-lg px-3 text-xs font-semibold transition ${modoData === "entrega" ? "bg-white/[.08] text-[var(--kb-text)] shadow-sm" : "text-[var(--kb-text-muted)] hover:text-[var(--kb-text)]"}`}
+                >
+                  Só entrega
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModoData("periodo")}
+                  className={`min-h-9 rounded-lg px-3 text-xs font-semibold transition ${modoData === "periodo" ? "bg-white/[.08] text-[var(--kb-text)] shadow-sm" : "text-[var(--kb-text-muted)] hover:text-[var(--kb-text)]"}`}
+                >
+                  Período
+                </button>
+              </div>
             </div>
-            <p className="text-[10px] text-muted-foreground">
+            <p className="text-xs leading-relaxed text-[var(--kb-text-muted)]">
               {modoData === "sem_data"
                 ? "O calendário será definido pelos prazos de cada tarefa."
                 : modoData === "entrega"
                   ? "Informe apenas o prazo final. O início será a data de criação."
                   : "Use quando a produção tiver uma janela definida de início e entrega."}
             </p>
-          </div>
-          {modoData !== "sem_data" && (
-            <div
-              className={`grid gap-3 ${modoData === "periodo" ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1"}`}
-            >
-              {modoData === "periodo" && (
-                <div className="space-y-1.5">
-                  <Label className="text-xs">Início</Label>
-                  <Input
-                    type="date"
-                    value={dataInicio}
-                    onChange={(e) => setDataInicio(e.target.value)}
-                  />
-                </div>
-              )}
-              <div className="space-y-1.5">
-                <Label className="text-xs">
-                  Entrega prevista{" "}
-                  <span className="font-normal text-muted-foreground">(opcional)</span>
-                </Label>
-                <Input
-                  type="date"
-                  value={dataEntrega}
-                  min={modoData === "periodo" ? dataInicio : undefined}
-                  aria-invalid={periodoInvalido}
-                  onChange={(e) => setDataEntrega(e.target.value)}
-                />
-                {periodoInvalido && (
-                  <p className="text-[10px] text-destructive">
-                    A entrega deve ser igual ou posterior ao início.
-                  </p>
+            {modoData !== "sem_data" && (
+              <div
+                className={`grid gap-3 ${modoData === "periodo" ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1"}`}
+              >
+                {modoData === "periodo" && (
+                  <div className="space-y-2">
+                    <Label className="kb-form-label">Início</Label>
+                    <Input
+                      className="kb-form-control"
+                      type="date"
+                      value={dataInicio}
+                      onChange={(e) => setDataInicio(e.target.value)}
+                    />
+                  </div>
                 )}
+                <div className="space-y-2">
+                  <Label className="kb-form-label">
+                    Entrega prevista{" "}
+                    <span className="font-normal text-muted-foreground">(opcional)</span>
+                  </Label>
+                  <Input
+                    className="kb-form-control"
+                    type="date"
+                    value={dataEntrega}
+                    min={modoData === "periodo" ? dataInicio : undefined}
+                    aria-invalid={periodoInvalido}
+                    onChange={(e) => setDataEntrega(e.target.value)}
+                  />
+                  {periodoInvalido && (
+                    <p className="text-xs text-destructive">
+                      A entrega deve ser igual ou posterior ao início.
+                    </p>
+                  )}
+                </div>
               </div>
+            )}
+          </section>
+
+          <section className="kb-form-section grid gap-4 sm:grid-cols-2">
+            <div className="kb-form-custom space-y-2">
+              <Label className="kb-form-label">Equipe do projeto</Label>
+              <MembrosSelect value={equipe} onChange={setEquipe} />
             </div>
-          )}
-          <div className="space-y-1.5">
-            <Label className="text-xs">Equipe do projeto</Label>
-            <MembrosSelect value={equipe} onChange={setEquipe} />
-          </div>
-          {editando && podeVerValor && (
-            <div className="space-y-1.5">
-              <Label className="text-xs">Valor (R$)</Label>
-              <CurrencyInput value={valor} onValueChange={setValor} />
+            {editando && podeVerValor && (
+              <div className="space-y-2">
+                <Label className="kb-form-label">Valor (R$)</Label>
+                <CurrencyInput className="kb-form-control" value={valor} onValueChange={setValor} />
+              </div>
+            )}
+            <div className="space-y-2 sm:col-span-2">
+              <Label className="kb-form-label">Descrição</Label>
+              <Textarea
+                className="kb-form-control min-h-28 resize-y"
+                rows={3}
+                value={descricao}
+                onChange={(e) => setDescricao(e.target.value)}
+                placeholder="Briefing, escopo, observações…"
+              />
             </div>
-          )}
-          <div className="space-y-1.5">
-            <Label className="text-xs">Descrição</Label>
-            <Textarea
-              rows={3}
-              value={descricao}
-              onChange={(e) => setDescricao(e.target.value)}
-              placeholder="Briefing, escopo, observações…"
-            />
-          </div>
+          </section>
         </div>
-        <DialogFooter className="flex-row items-center justify-between gap-2 border-t border-border/60 bg-background px-4 py-3 sm:justify-between sm:px-6 sm:py-4">
+        <DialogFooter className="kb-form-footer flex-row items-center justify-between gap-2 border-t border-white/[.07] px-5 py-4 sm:justify-between sm:px-6">
           {editando ? (
             <Button
               variant="ghost"
@@ -334,10 +372,16 @@ export function ProjetoModal({
             <span />
           )}
           <div className="flex gap-2">
-            <Button variant="outline" onClick={onClose} disabled={salvando || removendo}>
+            <Button
+              variant="outline"
+              className="h-11 rounded-xl px-4"
+              onClick={onClose}
+              disabled={salvando || removendo}
+            >
               Cancelar
             </Button>
             <Button
+              className="h-11 rounded-xl px-5 font-bold"
               onClick={salvar}
               disabled={salvando || removendo || periodoInvalido || !nome.trim() || !cliente.trim()}
             >

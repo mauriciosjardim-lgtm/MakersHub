@@ -11,7 +11,7 @@ export function Topbar() {
           MakersHub
         </span>
         <span className="rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
-          v0.8.13
+          v0.8.14
         </span>
       </div>
     </header>

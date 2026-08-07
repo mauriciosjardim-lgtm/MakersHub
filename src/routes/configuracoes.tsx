@@ -51,6 +51,17 @@ const sections = [
 ];
 
 function ConfiguracoesPage() {
+  useEffect(() => {
+    const sectionId = window.location.hash.slice(1);
+    if (!sectionId) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+
   return (
     <div className="mx-auto w-full max-w-[1200px] px-4 py-6 md:px-8 md:py-10">
       <header className="mb-8">
@@ -1432,7 +1443,7 @@ function EquipeSection() {
   return (
     <section
       id="equipe"
-      className="rounded-2xl border border-border/60 bg-surface-1/60 p-6 backdrop-blur-sm"
+      className="scroll-mt-6 rounded-2xl border border-border/60 bg-surface-1/60 p-6 backdrop-blur-sm"
     >
       <div className="mb-2 flex items-center gap-2">
         <People size={16} color="currentColor" variant="Linear" className="text-primary" />

@@ -1,6 +1,6 @@
 import { addDays, format, isSameDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Danger, Sms, Calendar, TickCircle } from "iconsax-react";
+import { ArrowRight2, Danger, Sms, Calendar, TickCircle, Notification } from "iconsax-react";
 import { isProjetoAtivo, type Projeto, type Tarefa, type Entregavel } from "@/lib/mock/projetos";
 import { projetosActions } from "@/lib/hooks/useProjetos";
 import { cn } from "@/lib/utils";
@@ -101,59 +101,79 @@ export function CentralAtencao({
           : "flex h-full min-h-0 flex-col rounded-none border-0 bg-transparent",
       )}
     >
-      <div className="border-b border-border p-3">
-        <div className="flex items-center justify-between">
-          <h2 className="font-display text-sm font-semibold">Central de atenção</h2>
+      <div className="border-b border-white/[.07] px-5 py-5 pr-14">
+        <div className="flex items-center gap-3">
+          <span className="kb-form-icon grid size-11 shrink-0 place-items-center rounded-xl">
+            <Notification size={21} color="currentColor" variant="Bulk" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <h2 className="font-display text-lg font-bold tracking-[-.02em]">Central de atenção</h2>
+            <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+              Pendências que exigem decisão ou acompanhamento.
+            </p>
+          </div>
           {pendencias.length > 0 && (
-            <span className="grid size-5 place-items-center rounded-md bg-destructive/15 text-[10px] font-bold text-destructive">
+            <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-destructive/15 text-xs font-bold text-destructive ring-1 ring-destructive/20">
               {pendencias.length}
             </span>
           )}
         </div>
-        <p className="mt-1 text-[10px] text-muted-foreground">
-          Só o que exige decisão ou acompanhamento.
-        </p>
       </div>
       <div
         className={cn(
-          "space-y-2 overflow-y-auto p-3",
+          "kb-scrollbar space-y-3 overflow-y-auto p-4",
           modo === "inline" ? "lg:max-h-[calc(100vh-8rem)]" : "min-h-0 flex-1",
         )}
       >
         {pendencias.length === 0 && (
-          <p className="rounded-lg border border-dashed border-border/40 p-6 text-center text-[10px] text-muted-foreground/60">
+          <p className="rounded-xl border border-dashed border-border/40 p-8 text-center text-sm text-muted-foreground/60">
             Tudo em dia — nenhuma pendência agora.
           </p>
         )}
         {pendencias.slice(0, 12).map((pend) => {
           const info = INFO_TIPO[pend.tipo];
+          const Icon = info.icon;
           return (
-            <div key={pend.id} className="rounded-lg border border-border/60 bg-surface-2/40 p-2.5">
-              <div className="mb-1.5 flex items-center gap-1.5 text-[9px] text-muted-foreground">
+            <div
+              key={pend.id}
+              className="rounded-xl border border-white/[.07] bg-white/[.025] p-4 transition hover:border-white/[.11] hover:bg-white/[.035]"
+            >
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <span className="inline-flex items-center gap-1.5 rounded-lg bg-white/[.04] px-2 py-1 text-[11px] font-semibold text-muted-foreground">
+                  <Icon size={13} color="currentColor" variant="Bulk" />
+                  {info.label}
+                </span>
                 <span className={cn("size-1.5 rounded-full", info.dot)} />
-                {info.label}
               </div>
-              <p className="text-xs font-medium leading-snug">{pend.titulo}</p>
-              <p className="mt-0.5 text-[10px] text-muted-foreground">{pend.projeto.cliente}</p>
-              {pend.pessoa && (
-                <p className="mt-1 text-[10px] text-muted-foreground">{pend.pessoa}</p>
-              )}
-              <div className="mt-2 flex gap-1.5">
+              <p className="font-display text-sm font-bold leading-snug tracking-[-.01em]">
+                {pend.titulo}
+              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                <span>{pend.projeto.cliente}</span>
+                {pend.pessoa && (
+                  <>
+                    <span className="size-1 rounded-full bg-white/20" />
+                    <span>{pend.pessoa}</span>
+                  </>
+                )}
+              </div>
+              <div className="mt-4 flex gap-2 border-t border-white/[.06] pt-3">
                 {pend.tipo === "atrasada" && pend.tarefaId && (
                   <button
                     onClick={() =>
                       projetosActions.atualizarTarefa(pend.tarefaId!, { concluida: true })
                     }
-                    className="flex-1 rounded-md border border-border/60 bg-surface-1/60 px-2 py-1 text-[10px] text-muted-foreground transition hover:border-primary/40 hover:text-primary"
+                    className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-white/[.075] bg-white/[.025] px-3 text-xs font-semibold text-muted-foreground transition hover:border-primary/30 hover:bg-primary/[.06] hover:text-primary"
                   >
+                    <TickCircle size={14} color="currentColor" variant="Linear" />
                     Concluir
                   </button>
                 )}
                 <button
                   onClick={() => onAbrir(pend.projeto.id)}
-                  className="flex-1 rounded-md border border-border/60 bg-surface-1/60 px-2 py-1 text-[10px] text-muted-foreground transition hover:border-primary/40 hover:text-primary"
+                  className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-white/[.075] bg-white/[.025] px-3 text-xs font-semibold text-muted-foreground transition hover:border-primary/30 hover:bg-primary/[.06] hover:text-primary"
                 >
-                  Abrir
+                  Abrir <ArrowRight2 size={14} color="currentColor" variant="Linear" />
                 </button>
               </div>
             </div>

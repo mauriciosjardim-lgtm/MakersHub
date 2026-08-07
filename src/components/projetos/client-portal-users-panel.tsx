@@ -38,9 +38,11 @@ import { cn } from "@/lib/utils";
 export function ClientPortalUsersPanel({
   clientId,
   clientName,
+  navigation,
 }: {
   clientId?: string;
   clientName: string;
+  navigation?: ReactNode;
 }) {
   const { empresa } = useAuth();
   const [users, setUsers] = useState<PortalClientUser[]>([]);
@@ -201,39 +203,40 @@ export function ClientPortalUsersPanel({
 
   return (
     <>
-      <section className="overflow-hidden rounded-xl border border-border bg-surface-1/35">
-        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 p-4">
+      <section className="overflow-hidden rounded-2xl border border-white/[.075] bg-white/[.022]">
+        {navigation && (
+          <div className="border-b border-white/[.07] bg-black/[.08]">{navigation}</div>
+        )}
+        <header className="flex flex-wrap items-center justify-between gap-4 border-b border-white/[.07] p-4 sm:p-5">
           <div className="flex items-center gap-3">
-            <span className="grid size-9 place-items-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
-              <KeyRound className="size-4" />
+            <span className="grid size-11 place-items-center rounded-2xl border border-[#66B8FF]/25 bg-[#66B8FF]/10 text-[#66B8FF] shadow-[inset_0_1px_0_rgba(255,255,255,.07),0_0_22px_-14px_currentColor]">
+              <KeyRound className="size-[18px]" />
             </span>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-sm font-semibold">Acessos deste cliente</h3>
+                <h3 className="font-display text-base font-bold">Pessoas com acesso</h3>
                 {activeUsers > 0 && (
-                  <span className="rounded-full bg-success/12 px-2 py-0.5 text-[8px] font-bold uppercase tracking-wider text-success">
+                  <span className="rounded-full bg-success/12 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-success">
                     {activeUsers} ativo{activeUsers === 1 ? "" : "s"}
                   </span>
                 )}
               </div>
-              <p className="mt-0.5 text-[10px] text-muted-foreground">
-                Usuários de {clientName} que podem entrar no Makers Members.
-              </p>
+              <p className="mt-1 text-xs text-muted-foreground">Logins ativos de {clientName}.</p>
             </div>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" asChild>
+            <Button variant="outline" asChild className="h-10 rounded-xl px-4">
               <a href="/portal/login" target="_blank" rel="noreferrer">
                 <ExternalLink className="size-3.5" /> Tela de login
               </a>
             </Button>
-            <Button size="sm" onClick={openCreate}>
+            <Button className="h-10 rounded-xl px-4 font-bold" onClick={openCreate}>
               <UserPlus className="size-3.5" /> Novo usuário
             </Button>
           </div>
         </header>
 
-        <div className="p-4">
+        <div className="p-4 sm:p-5">
           {loading ? (
             <div className="flex h-20 items-center justify-center">
               <Loader2 className="size-4 animate-spin text-primary" />
@@ -244,11 +247,11 @@ export function ClientPortalUsersPanel({
               className="grid min-h-28 place-items-center rounded-xl border border-destructive/25 bg-destructive/[0.035] text-center"
             >
               <div>
-                <p className="text-xs font-medium">Não foi possível carregar os acessos</p>
+                <p className="text-sm font-semibold">Não foi possível carregar os acessos</p>
                 <button
                   type="button"
                   onClick={() => void load()}
-                  className="mt-2 text-[10px] font-medium text-primary hover:underline"
+                  className="mt-2 text-xs font-semibold text-primary hover:underline"
                 >
                   Tentar novamente
                 </button>
@@ -260,27 +263,27 @@ export function ClientPortalUsersPanel({
                 <div
                   key={user.id}
                   className={cn(
-                    "flex flex-col items-stretch justify-between gap-3 rounded-xl border p-3 sm:flex-row sm:items-center",
+                    "flex flex-col items-stretch justify-between gap-3 rounded-xl border p-4 sm:flex-row sm:items-center",
                     user.status === "active"
                       ? "border-success/20 bg-success/[0.04]"
                       : "border-border/60 bg-background/20 opacity-65",
                   )}
                 >
                   <div className="flex min-w-0 items-center gap-3">
-                    <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-surface-2 text-muted-foreground">
-                      <UserRound className="size-4" />
+                    <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-surface-2 text-muted-foreground">
+                      <UserRound className="size-[18px]" />
                     </span>
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">
-                        <p className="truncate text-xs font-medium">{user.name}</p>
+                        <p className="truncate text-sm font-semibold">{user.name}</p>
                         {user.status === "active" && (
                           <ShieldCheck className="size-3 text-success" />
                         )}
                       </div>
-                      <p className="mt-1 flex items-center gap-1 truncate text-[9px] text-muted-foreground">
-                        <Mail className="size-2.5" /> {user.email}
+                      <p className="mt-1 flex items-center gap-1.5 truncate text-xs text-muted-foreground">
+                        <Mail className="size-3" /> {user.email}
                       </p>
-                      <p className="mt-1 text-[8px] text-muted-foreground">
+                      <p className="mt-1 text-[10px] text-muted-foreground">
                         {user.lastAccessAt
                           ? `Último acesso ${new Date(user.lastAccessAt).toLocaleString("pt-BR")}`
                           : "Ainda não acessou"}
@@ -327,13 +330,13 @@ export function ClientPortalUsersPanel({
                   <UserPlus className="size-5" />
                 </span>
                 <span>
-                  <span className="block text-xs font-semibold">Nenhum usuário criado</span>
-                  <span className="mt-1 block text-[9px] text-muted-foreground">
+                  <span className="block text-sm font-semibold">Nenhum usuário criado</span>
+                  <span className="mt-1 block text-xs text-muted-foreground">
                     Crie o primeiro login com e-mail e senha.
                   </span>
                 </span>
               </span>
-              <span className="text-[10px] font-semibold text-primary">Criar acesso →</span>
+              <span className="text-xs font-semibold text-primary">Criar acesso →</span>
             </button>
           )}
         </div>
@@ -345,13 +348,20 @@ export function ClientPortalUsersPanel({
           if (!creating) setDialog(open);
         }}
       >
-        <DialogContent className={credentials ? "sm:max-w-lg" : "sm:max-w-md"}>
-          <DialogHeader>
-            <DialogTitle>{credentials ? "Acesso criado" : "Novo usuário do cliente"}</DialogTitle>
+        <DialogContent
+          className={cn(
+            "kb-form-dialog overflow-hidden p-0",
+            credentials ? "sm:max-w-lg" : "sm:max-w-md",
+          )}
+        >
+          <DialogHeader className="kb-form-header border-b border-white/[.07] px-5 py-5 pr-14">
+            <DialogTitle className="font-display text-xl font-bold tracking-[-.02em]">
+              {credentials ? "Acesso criado" : "Novo usuário do cliente"}
+            </DialogTitle>
           </DialogHeader>
 
           {credentials ? (
-            <div className="space-y-4">
+            <div className="space-y-4 px-5 py-5">
               <div className="rounded-xl border border-success/25 bg-success/[0.06] p-4">
                 <p className="flex items-center gap-2 text-xs font-semibold text-success">
                   <CheckCircle2 className="size-4" /> Usuário pronto para entrar
@@ -376,15 +386,15 @@ export function ClientPortalUsersPanel({
                       <MessageCircle className="size-3.5 text-success" />
                       Mensagem pronta para o WhatsApp
                     </p>
-                    <p className="mt-1 text-[9px] text-muted-foreground">
+                    <p className="mt-1 text-xs text-muted-foreground">
                       Já inclui o link, o login e a senha temporária.
                     </p>
                   </div>
-                  <span className="rounded-full bg-success/10 px-2 py-1 text-[8px] font-semibold uppercase tracking-wider text-success">
+                  <span className="rounded-full bg-success/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-success">
                     Pronta
                   </span>
                 </div>
-                <div className="max-h-64 overflow-y-auto whitespace-pre-wrap px-4 py-3 text-[11px] leading-5 text-foreground/85">
+                <div className="max-h-64 overflow-y-auto whitespace-pre-wrap px-4 py-3 text-xs leading-relaxed text-foreground/85">
                   {invitationMessage}
                 </div>
               </div>
@@ -405,12 +415,13 @@ export function ClientPortalUsersPanel({
               </div>
             </div>
           ) : (
-            <div className="space-y-4">
-              <p className="rounded-lg border border-border/60 bg-surface-1/30 px-3 py-2 text-[10px] text-muted-foreground">
+            <div className="space-y-4 px-5 py-5">
+              <p className="rounded-xl border border-white/[.07] bg-white/[.025] px-3 py-2.5 text-xs text-muted-foreground">
                 Cliente: <strong className="text-foreground">{clientName}</strong>
               </p>
               <Field label="Nome da pessoa">
                 <Input
+                  className="kb-form-control"
                   value={form.name}
                   onChange={(event) =>
                     setForm((current) => ({ ...current, name: event.target.value }))
@@ -420,6 +431,7 @@ export function ClientPortalUsersPanel({
               </Field>
               <Field label="E-mail de acesso">
                 <Input
+                  className="kb-form-control"
                   type="email"
                   value={form.email}
                   onChange={(event) =>
@@ -436,7 +448,7 @@ export function ClientPortalUsersPanel({
                     onChange={(event) =>
                       setForm((current) => ({ ...current, password: event.target.value }))
                     }
-                    className="pr-10"
+                    className="kb-form-control pr-10"
                   />
                   <button
                     type="button"
@@ -451,7 +463,7 @@ export function ClientPortalUsersPanel({
             </div>
           )}
 
-          <DialogFooter>
+          <DialogFooter className="kb-form-footer border-t border-white/[.07] px-5 py-4">
             {credentials ? (
               <Button variant="outline" onClick={() => setDialog(false)}>
                 Concluir
@@ -476,9 +488,7 @@ export function ClientPortalUsersPanel({
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <label className="block space-y-1.5">
-      <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-        {label}
-      </span>
+      <span className="kb-form-label">{label}</span>
       {children}
     </label>
   );
