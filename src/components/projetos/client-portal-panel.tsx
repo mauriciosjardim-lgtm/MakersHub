@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -16,7 +16,6 @@ import {
   Plus,
   RefreshCcw,
   Send,
-  Settings2,
   Sparkles,
   Trash2,
 } from "lucide-react";
@@ -110,14 +109,24 @@ const REVIEW_STATUS = {
   },
 } as const;
 
+export type ClientPortalMetrics = {
+  pending: number;
+  changes: number;
+  deliveries: number;
+};
+
 export function ClientPortalProjectPanel({
   project,
   showAccessBanner = true,
   view = "all",
+  navigation,
+  onMetricsChange,
 }: {
   project: Projeto;
   showAccessBanner?: boolean;
   view?: "all" | "status" | "approvals" | "deliveries";
+  navigation?: ReactNode;
+  onMetricsChange?: (metrics: ClientPortalMetrics) => void;
 }) {
   const [reviews, setReviews] = useState<ClientReview[]>([]);
   const [access, setAccess] = useState<ClientPortalAccess | null>(null);
@@ -195,6 +204,15 @@ export function ClientPortalProjectPanel({
       ? `${window.location.origin}/portal/${portalSlug(project.cliente)}`
       : null;
 
+  useEffect(() => {
+    if (loading) return;
+    onMetricsChange?.({
+      pending: pending.length,
+      changes: changes.length,
+      deliveries: deliveries.length,
+    });
+  }, [changes.length, deliveries.length, loading, onMetricsChange, pending.length]);
+
   const savePublic = async () => {
     if (!project.clienteId) {
       toast.error("Vincule este projeto ao cadastro do cliente antes de salvar");
@@ -240,7 +258,7 @@ export function ClientPortalProjectPanel({
   };
 
   return (
-    <div className="space-y-4">
+    <div className="kb-client-panel space-y-4">
       {!project.clienteId && (
         <div className="flex items-start gap-3 rounded-xl border border-warning/30 bg-warning/[0.07] p-4">
           <AlertTriangle className="mt-0.5 size-4 shrink-0 text-warning" />
@@ -284,48 +302,27 @@ export function ClientPortalProjectPanel({
       )}
 
       {(view === "all" || view === "status") && (
-        <section className="overflow-hidden rounded-xl border border-border bg-surface-1/35">
-          <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 p-4">
-            <div className="flex items-center gap-3">
-              <span className="grid size-9 place-items-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
+        <section className="overflow-hidden rounded-2xl border border-white/[.075] bg-white/[.022]">
+          <header className="flex items-center gap-3 border-b border-white/[.07] bg-black/[.08] p-1.5 pr-3">
+            {navigation && <div className="min-w-0 flex-1">{navigation}</div>}
+            <label className="flex shrink-0 cursor-pointer items-center gap-3 rounded-xl border border-white/[.07] bg-white/[.025] px-3 py-1.5">
+              <span className="grid size-8 place-items-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
                 <Eye className="size-4" />
               </span>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="grid size-5 place-items-center rounded-full bg-primary text-[9px] font-bold text-primary-foreground">
-                    1
-                  </span>
-                  <h3 className="text-sm font-semibold">Status do projeto no portal</h3>
-                </div>
-                <p className="mt-0.5 text-[10px] text-muted-foreground">
-                  Mostre apenas uma visão simples do andamento, sem expor o fluxo interno.
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <span
-                className={cn(
-                  "rounded-full border px-2.5 py-1 text-[9px] font-medium uppercase tracking-wider",
-                  publicForm.visible
-                    ? "border-success/30 bg-success/10 text-success"
-                    : "border-border text-muted-foreground",
-                )}
-              >
-                {publicForm.visible ? "Publicado" : "Oculto"}
+              <span className="text-xs font-semibold text-foreground">
+                {publicForm.visible ? "Visível no portal" : "Oculto do cliente"}
               </span>
               <Switch
                 checked={publicForm.visible}
                 onCheckedChange={(visible) => setPublicForm((current) => ({ ...current, visible }))}
               />
-            </div>
+            </label>
           </header>
 
-          <div className="grid gap-4 p-4 lg:grid-cols-[.72fr_1.28fr]">
-            <div className="space-y-3">
-              <label className="block space-y-1.5">
-                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                  Etapa pública
-                </span>
+          <div className="grid gap-4 p-4 sm:p-5 lg:grid-cols-[.72fr_1.28fr]">
+            <div className="space-y-4">
+              <label className="block space-y-2">
+                <span className="text-xs font-semibold text-muted-foreground">Etapa</span>
                 <Select
                   value={publicForm.phase}
                   onValueChange={(phase) =>
@@ -336,7 +333,7 @@ export function ClientPortalProjectPanel({
                     }))
                   }
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="h-11 rounded-xl">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -350,8 +347,8 @@ export function ClientPortalProjectPanel({
               </label>
 
               <label className="block space-y-2">
-                <span className="flex items-center justify-between text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                  Progresso público
+                <span className="flex items-center justify-between text-xs font-semibold text-muted-foreground">
+                  Progresso
                   <strong className="text-sm text-primary">{publicForm.progress}%</strong>
                 </span>
                 <input
@@ -369,11 +366,10 @@ export function ClientPortalProjectPanel({
                 />
               </label>
 
-              <label className="block space-y-1.5">
-                <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-                  Próximo marco
-                </span>
+              <label className="block space-y-2">
+                <span className="text-xs font-semibold text-muted-foreground">Próximo marco</span>
                 <Input
+                  className="h-11 rounded-xl"
                   value={publicForm.nextMilestone}
                   onChange={(event) =>
                     setPublicForm((current) => ({
@@ -386,18 +382,19 @@ export function ClientPortalProjectPanel({
               </label>
             </div>
 
-            <div className="space-y-3">
-              <label className="block space-y-1.5">
-                <span className="flex items-center justify-between gap-3 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+            <div className="space-y-4">
+              <label className="block space-y-2">
+                <span className="flex items-center justify-between gap-3 text-xs font-semibold text-muted-foreground">
                   Resumo para o cliente
                   <span className="normal-case tracking-normal text-muted-foreground/70">
                     opcional
                   </span>
                 </span>
-                <span className="block text-[10px] leading-4 text-muted-foreground">
+                <span className="block text-xs leading-relaxed text-muted-foreground">
                   Uma frase curta que aparece na visão geral. Use a sugestão abaixo ou deixe vazio.
                 </span>
                 <Textarea
+                  className="min-h-28 rounded-xl"
                   rows={4}
                   value={publicForm.update}
                   onChange={(event) =>
@@ -414,7 +411,7 @@ export function ClientPortalProjectPanel({
                     update: PHASE_MESSAGES[current.phase] || "",
                   }))
                 }
-                className="flex w-full items-start gap-2 rounded-lg border border-primary/20 bg-primary/[0.05] px-3 py-2.5 text-left text-[10px] leading-4 text-muted-foreground transition hover:border-primary/35"
+                className="flex w-full items-start gap-2.5 rounded-xl border border-primary/20 bg-primary/[0.05] px-3.5 py-3 text-left text-xs leading-relaxed text-muted-foreground transition hover:border-primary/35"
               >
                 <Sparkles className="mt-0.5 size-3.5 shrink-0 text-primary" />
                 <span>
@@ -422,8 +419,8 @@ export function ClientPortalProjectPanel({
                   {PHASE_MESSAGES[publicForm.phase]}”
                 </span>
               </button>
-              <details className="rounded-lg border border-border/60 bg-background/20">
-                <summary className="cursor-pointer px-3 py-2 text-[10px] text-muted-foreground">
+              <details className="rounded-xl border border-white/[.07] bg-black/[.08]">
+                <summary className="cursor-pointer px-3.5 py-3 text-xs font-medium text-muted-foreground">
                   Imagem de capa do projeto (opcional)
                 </summary>
                 <div className="border-t border-border/60 p-3">
@@ -434,7 +431,7 @@ export function ClientPortalProjectPanel({
                     }
                     placeholder="Cole a URL da imagem personalizada"
                   />
-                  <p className="mt-2 text-[9px] leading-4 text-muted-foreground">
+                  <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
                     Se ficar vazio, o portal usará automaticamente a capa cinematográfica padrão.
                   </p>
                   {!publicForm.coverUrl.trim() && (
@@ -451,26 +448,26 @@ export function ClientPortalProjectPanel({
             </div>
           </div>
 
-          <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 px-4 py-3">
-            <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-              <Settings2 className="size-3.5 text-primary" />
-              Só estas informações serão exibidas ao cliente.
-            </div>
+          <footer className="flex flex-wrap items-center justify-end gap-3 border-t border-white/[.07] px-4 py-4 sm:px-5">
             <div className="flex gap-2">
               {portalUrl && access?.enabled && (
-                <Button variant="outline" size="sm" asChild>
+                <Button variant="outline" asChild className="h-10 rounded-xl px-4">
                   <a href={portalUrl} target="_blank" rel="noreferrer">
                     <ExternalLink className="size-3.5" /> Visualizar como cliente
                   </a>
                 </Button>
               )}
-              <Button size="sm" onClick={savePublic} disabled={savingPublic || !project.clienteId}>
+              <Button
+                className="h-10 rounded-xl px-4 font-bold"
+                onClick={savePublic}
+                disabled={savingPublic || !project.clienteId}
+              >
                 {savingPublic ? (
                   <Loader2 className="size-3.5 animate-spin" />
                 ) : (
                   <Send className="size-3.5" />
                 )}
-                {publicForm.visible ? "Publicar status no portal" : "Salvar como oculto"}
+                Salvar alterações
               </Button>
             </div>
           </footer>
@@ -478,26 +475,31 @@ export function ClientPortalProjectPanel({
       )}
 
       {(view === "all" || view === "approvals") && (
-        <section className="rounded-xl border border-border bg-surface-1/35">
-          <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 p-4">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="grid size-5 place-items-center rounded-full bg-warning text-[9px] font-bold text-black">
-                  2
-                </span>
-                <h3 className="text-sm font-semibold">Enviar para aprovação</h3>
-                {pending.length > 0 && (
-                  <span className="rounded-full bg-warning px-2 py-0.5 text-[9px] font-bold text-black">
-                    {pending.length} aguardando
-                  </span>
-                )}
+        <section className="rounded-2xl border border-white/[.075] bg-white/[.022]">
+          {navigation && (
+            <div className="border-b border-white/[.07] bg-black/[.08]">{navigation}</div>
+          )}
+          <header className="flex flex-wrap items-center justify-between gap-4 border-b border-white/[.07] p-4 sm:p-5">
+            <div className="flex items-center gap-3">
+              <span className="grid size-11 place-items-center rounded-2xl border border-warning/25 bg-warning/10 text-warning shadow-[inset_0_1px_0_rgba(255,255,255,.07),0_0_22px_-14px_currentColor]">
+                <Send className="size-[18px]" />
+              </span>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="font-display text-base font-bold">Materiais em revisão</h3>
+                  {pending.length > 0 && (
+                    <span className="rounded-full bg-warning px-2.5 py-1 text-[10px] font-bold text-black">
+                      {pending.length} aguardando
+                    </span>
+                  )}
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Versões enviadas e decisões do cliente.
+                </p>
               </div>
-              <p className="mt-1 text-[10px] text-muted-foreground">
-                Use quando o cliente precisa aprovar ou pedir alterações em um vídeo.
-              </p>
             </div>
             <Button
-              size="sm"
+              className="h-10 rounded-xl px-4 font-bold"
               onClick={() => setReviewDialog({ open: true })}
               disabled={!project.clienteId}
             >
@@ -546,26 +548,34 @@ export function ClientPortalProjectPanel({
       )}
 
       {(view === "all" || view === "deliveries") && (
-        <section className="rounded-xl border border-border bg-surface-1/35">
-          <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 p-4">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="grid size-5 place-items-center rounded-full bg-success text-[9px] font-bold text-black">
-                  3
-                </span>
-                <h3 className="text-sm font-semibold">Entregas finais</h3>
-                {deliveries.length > 0 && (
-                  <span className="rounded-full bg-success/12 px-2 py-0.5 text-[9px] font-bold text-success">
-                    {deliveries.length} disponível{deliveries.length === 1 ? "" : "is"}
-                  </span>
-                )}
+        <section className="rounded-2xl border border-white/[.075] bg-white/[.022]">
+          {navigation && (
+            <div className="border-b border-white/[.07] bg-black/[.08]">{navigation}</div>
+          )}
+          <header className="flex flex-wrap items-center justify-between gap-4 border-b border-white/[.07] p-4 sm:p-5">
+            <div className="flex items-center gap-3">
+              <span className="grid size-11 place-items-center rounded-2xl border border-success/25 bg-success/10 text-success shadow-[inset_0_1px_0_rgba(255,255,255,.07),0_0_22px_-14px_currentColor]">
+                <PackageCheck className="size-[18px]" />
+              </span>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="font-display text-base font-bold">Biblioteca de entregas</h3>
+                  {deliveries.length > 0 && (
+                    <span className="rounded-full bg-success/12 px-2.5 py-1 text-[10px] font-bold text-success">
+                      {deliveries.length} disponível{deliveries.length === 1 ? "" : "is"}
+                    </span>
+                  )}
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Arquivos finais disponíveis ao cliente.
+                </p>
               </div>
-              <p className="mt-1 text-[10px] text-muted-foreground">
-                Aprovações entram aqui automaticamente. Use “Nova entrega” para liberar um arquivo
-                final sem revisão.
-              </p>
             </div>
-            <Button size="sm" onClick={() => setDeliveryDialog(true)} disabled={!project.clienteId}>
+            <Button
+              className="h-10 rounded-xl px-4 font-bold"
+              onClick={() => setDeliveryDialog(true)}
+              disabled={!project.clienteId}
+            >
               <PackageCheck className="size-3.5" /> Nova entrega
             </Button>
           </header>
@@ -704,9 +714,11 @@ export function ClientPortalProjectPanel({
 
 function ReviewMetric({ label, value, tone }: { label: string; value: number; tone: string }) {
   return (
-    <div className="p-3 text-center">
-      <p className={cn("font-display text-xl font-semibold tabular-nums", tone)}>{value}</p>
-      <p className="mt-0.5 text-[9px] uppercase tracking-wider text-muted-foreground">{label}</p>
+    <div className="p-4 text-center">
+      <p className={cn("font-display text-2xl font-bold tabular-nums", tone)}>{value}</p>
+      <p className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        {label}
+      </p>
     </div>
   );
 }
@@ -719,11 +731,11 @@ function PortalDataError({ onRetry }: { onRetry: () => void }) {
     >
       <div>
         <AlertTriangle className="mx-auto size-5 text-destructive" />
-        <p className="mt-3 text-xs font-medium">Não foi possível carregar estes dados</p>
+        <p className="mt-3 text-sm font-semibold">Não foi possível carregar estes dados</p>
         <button
           type="button"
           onClick={onRetry}
-          className="mt-2 inline-flex items-center gap-1.5 text-[10px] font-medium text-primary hover:underline"
+          className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline"
         >
           <RefreshCcw className="size-3" />
           Tentar novamente
@@ -747,30 +759,30 @@ function ReviewRow({
   const status = REVIEW_STATUS[review.status];
   const StatusIcon = status.icon;
   return (
-    <article className="rounded-xl border border-border/60 bg-card/60 p-3.5">
+    <article className="rounded-xl border border-white/[.07] bg-white/[.025] p-4">
       <div className="flex flex-wrap items-start gap-3">
         <span className="grid size-10 shrink-0 place-items-center rounded-xl border border-border/60 bg-surface-2/50 text-primary">
           <Film className="size-4" />
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="truncate text-sm font-medium">{review.title}</p>
-            <span className="rounded-md border border-border/70 px-1.5 py-0.5 text-[9px] text-muted-foreground">
+            <p className="truncate font-display text-sm font-bold">{review.title}</p>
+            <span className="rounded-md border border-border/70 px-1.5 py-0.5 text-[10px] text-muted-foreground">
               {review.versionLabel}
             </span>
             {review.contentCycle && (
-              <span className="text-[9px] text-muted-foreground">{review.contentCycle}</span>
+              <span className="text-[10px] text-muted-foreground">{review.contentCycle}</span>
             )}
           </div>
           {review.message && (
-            <p className="mt-1 line-clamp-1 text-[10px] text-muted-foreground">{review.message}</p>
+            <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">{review.message}</p>
           )}
           {review.clientFeedback && <ClientFeedbackPanel feedback={review.clientFeedback} />}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span
             className={cn(
-              "inline-flex items-center gap-1 rounded-full border px-2 py-1 text-[9px]",
+              "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-semibold",
               status.classes,
             )}
           >
@@ -794,7 +806,7 @@ function ReviewRow({
           {review.status === "pending" && (
             <button
               onClick={onRemove}
-              className="px-2 text-[10px] text-muted-foreground hover:text-destructive"
+              className="px-2 text-xs font-medium text-muted-foreground hover:text-destructive"
             >
               Remover
             </button>
@@ -892,7 +904,7 @@ function RemoveReviewDialog({
 
   return (
     <Dialog open={Boolean(review)} onOpenChange={(open) => !open && !removing && onClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="kb-form-dialog max-w-md">
         <DialogHeader>
           <DialogTitle className="font-display">Remover publicação?</DialogTitle>
         </DialogHeader>
@@ -968,22 +980,21 @@ function EditReviewDialog({
 
   return (
     <Dialog open={Boolean(review)} onOpenChange={(open) => !open && !saving && onClose()}>
-      <DialogContent className="max-w-xl">
+      <DialogContent className="kb-form-dialog max-w-xl">
         <DialogHeader>
           <DialogTitle className="font-display">Editar material publicado</DialogTitle>
         </DialogHeader>
 
-        <div className="rounded-xl border border-primary/20 bg-primary/[0.05] p-3 text-[10px] leading-4 text-muted-foreground">
+        <div className="rounded-xl border border-primary/20 bg-primary/[0.05] p-3.5 text-xs leading-5 text-muted-foreground">
           Edite as informações exibidas ao cliente sem perder o link, a decisão ou o histórico da
           aprovação.
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="space-y-1.5 sm:col-span-2">
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
-              Título do material
-            </span>
+            <span className="kb-form-label">Título do material</span>
             <Input
+              className="kb-form-control"
               value={title}
               onChange={(event) => setTitle(event.target.value)}
               placeholder="Ex.: Reel 03 — Campanha de julho"
@@ -991,36 +1002,31 @@ function EditReviewDialog({
             />
           </label>
           <label className="space-y-1.5">
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
-              Ciclo ou competência
-            </span>
+            <span className="kb-form-label">Ciclo ou competência</span>
             <Input
+              className="kb-form-control"
               value={cycle}
               onChange={(event) => setCycle(event.target.value)}
               placeholder="Ex.: Julho de 2026"
             />
           </label>
           <label className="space-y-1.5">
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
-              Versão
-            </span>
+            <span className="kb-form-label">Versão</span>
             <Input
+              className="kb-form-control"
               value={version}
               onChange={(event) => setVersion(event.target.value)}
               placeholder="V1"
             />
           </label>
           <label className="space-y-1.5 sm:col-span-2">
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
-              Aprovar até
-            </span>
+            <span className="kb-form-label">Aprovar até</span>
             <DateTimePicker value={dueAt} onChange={setDueAt} placeholder="Escolher prazo" />
           </label>
           <label className="space-y-1.5 sm:col-span-2">
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
-              Mensagem para o cliente
-            </span>
+            <span className="kb-form-label">Mensagem para o cliente</span>
             <Textarea
+              className="kb-form-control"
               value={message}
               onChange={(event) => setMessage(event.target.value)}
               rows={3}
@@ -1120,7 +1126,7 @@ function PublishReviewDialog({
 
   return (
     <Dialog open={open} onOpenChange={(value) => !value && !saving && onClose()}>
-      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+      <DialogContent className="kb-form-dialog max-h-[90vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="font-display">
             {thread ? "Enviar nova versão" : "Enviar para revisão"}
@@ -1129,15 +1135,13 @@ function PublishReviewDialog({
 
         <div className="grid gap-4 md:grid-cols-2">
           <label className="space-y-1.5 md:col-span-2">
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
-              Link do vídeo no Google Drive
-            </span>
+            <span className="kb-form-label">Link do vídeo no Google Drive</span>
             <div className="relative">
               <Link2 className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={driveUrl}
                 onChange={(event) => setDriveUrl(event.target.value)}
-                className="pl-9"
+                className="kb-form-control pl-10"
                 placeholder="https://drive.google.com/file/d/..."
                 autoFocus
               />
@@ -1149,7 +1153,7 @@ function PublishReviewDialog({
                 onChange={(event) => setSharingConfirmed(event.target.checked)}
                 className="mt-0.5 size-4 shrink-0 accent-primary"
               />
-              <span className="text-[10px] leading-4 text-muted-foreground">
+              <span className="text-xs leading-5 text-muted-foreground">
                 <strong className="block text-warning">Confirme o acesso antes de publicar</strong>
                 No Google Drive, selecione “Qualquer pessoa com o link — Leitor”. Sem isso, o
                 cliente verá o player bloqueado.
@@ -1181,51 +1185,47 @@ function PublishReviewDialog({
           )}
 
           <label className="space-y-1.5">
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
-              Material
-            </span>
+            <span className="kb-form-label">Material</span>
             <Input
+              className="kb-form-control"
               value={title}
               onChange={(event) => setTitle(event.target.value)}
               placeholder="Ex.: Reel 03 — Campanha de julho"
             />
           </label>
           <label className="space-y-1.5">
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+            <span className="kb-form-label">
               Ciclo ou competência <span className="text-destructive">*</span>
             </span>
             <Input
+              className="kb-form-control"
               value={cycle}
               onChange={(event) => setCycle(event.target.value)}
               placeholder="Ex.: Julho de 2026"
               required
               aria-required="true"
             />
-            <span className="block text-[9px] leading-4 text-muted-foreground">
+            <span className="block text-[11px] leading-4 text-muted-foreground">
               Usado para organizar aprovações e entregas por período.
             </span>
           </label>
           <label className="space-y-1.5">
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
-              Versão
-            </span>
+            <span className="kb-form-label">Versão</span>
             <Input
+              className="kb-form-control"
               value={version}
               onChange={(event) => setVersion(event.target.value)}
               placeholder="V1"
             />
           </label>
           <label className="space-y-1.5">
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
-              Aprovar até
-            </span>
+            <span className="kb-form-label">Aprovar até</span>
             <DateTimePicker value={dueAt} onChange={setDueAt} placeholder="Escolher prazo" />
           </label>
           <label className="space-y-1.5 md:col-span-2">
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
-              Mensagem para o cliente
-            </span>
+            <span className="kb-form-label">Mensagem para o cliente</span>
             <Textarea
+              className="kb-form-control"
               value={message}
               onChange={(event) => setMessage(event.target.value)}
               rows={3}
@@ -1317,32 +1317,30 @@ function PublishDeliveryDialog({
 
   return (
     <Dialog open={open} onOpenChange={(value) => !value && !saving && onClose()}>
-      <DialogContent className="max-w-xl">
+      <DialogContent className="kb-form-dialog max-w-xl">
         <DialogHeader>
           <DialogTitle className="font-display">Entregar material final</DialogTitle>
         </DialogHeader>
 
-        <div className="rounded-xl border border-success/20 bg-success/[0.05] p-3 text-[10px] leading-4 text-muted-foreground">
+        <div className="rounded-xl border border-success/20 bg-success/[0.05] p-3.5 text-xs leading-5 text-muted-foreground">
           <strong className="text-foreground">Esta ação não pede aprovação.</strong> O material
           aparecerá diretamente na área de entregas do cliente para abrir ou baixar.
         </div>
 
         <div className="grid gap-4 md:grid-cols-2">
           <label className="space-y-1.5 md:col-span-2">
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
-              Link da pasta ou arquivo final
-            </span>
+            <span className="kb-form-label">Link da pasta ou arquivo final</span>
             <div className="relative">
               <Link2 className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={driveUrl}
                 onChange={(event) => setDriveUrl(event.target.value)}
-                className="pl-9"
+                className="kb-form-control pl-10"
                 placeholder="https://drive.google.com/..."
                 autoFocus
               />
             </div>
-            <p className="text-[10px] text-muted-foreground">
+            <p className="text-[11px] leading-4 text-muted-foreground">
               Pode ser uma pasta completa, um ZIP, vídeo master, galeria ou documento.
             </p>
             <label className="mt-2 flex cursor-pointer items-start gap-3 rounded-xl border border-warning/30 bg-warning/[0.07] p-3">
@@ -1352,7 +1350,7 @@ function PublishDeliveryDialog({
                 onChange={(event) => setSharingConfirmed(event.target.checked)}
                 className="mt-0.5 size-4 shrink-0 accent-primary"
               />
-              <span className="text-[10px] leading-4 text-muted-foreground">
+              <span className="text-xs leading-5 text-muted-foreground">
                 <strong className="block text-warning">
                   O cliente conseguirá abrir este link?
                 </strong>
@@ -1361,35 +1359,34 @@ function PublishDeliveryDialog({
             </label>
           </label>
           <label className="space-y-1.5">
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
-              Nome da entrega
-            </span>
+            <span className="kb-form-label">Nome da entrega</span>
             <Input
+              className="kb-form-control"
               value={title}
               onChange={(event) => setTitle(event.target.value)}
               placeholder="Ex.: Masters finais — Campanha"
             />
           </label>
           <label className="space-y-1.5">
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+            <span className="kb-form-label">
               Ciclo ou competência <span className="text-destructive">*</span>
             </span>
             <Input
+              className="kb-form-control"
               value={cycle}
               onChange={(event) => setCycle(event.target.value)}
               placeholder="Ex.: Julho de 2026"
               required
               aria-required="true"
             />
-            <span className="block text-[9px] leading-4 text-muted-foreground">
+            <span className="block text-[11px] leading-4 text-muted-foreground">
               Define onde a entrega ficará arquivada no portal.
             </span>
           </label>
           <label className="space-y-1.5 md:col-span-2">
-            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
-              Observação opcional
-            </span>
+            <span className="kb-form-label">Observação opcional</span>
             <Textarea
+              className="kb-form-control"
               value={message}
               onChange={(event) => setMessage(event.target.value)}
               rows={3}

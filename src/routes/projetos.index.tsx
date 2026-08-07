@@ -6,12 +6,19 @@ import {
   Add,
   ArrowLeft2,
   ArrowRight2,
+  Buildings2,
   Calendar,
   Clock,
+  Danger,
+  Element3,
+  FolderOpen,
   Notification,
+  Profile2User,
   SearchNormal,
+  TaskSquare,
   TickCircle,
 } from "iconsax-react";
+import type { Icon as IconsaxIcon } from "iconsax-react";
 import { Archive, ArchiveRestore, GripVertical, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -56,7 +63,7 @@ import {
 } from "@/lib/mock/projetos";
 import { projetosActions, useProjetos } from "@/lib/hooks/useProjetos";
 import { comercial, useComercialSupa, type Empresa } from "@/lib/hooks/useComercial";
-import { calcularResumoProgresso, SAUDE_ESTILO } from "@/lib/projetos/progresso";
+import { calcularResumoProgresso } from "@/lib/projetos/progresso";
 import {
   chaveAtualPipeline,
   colunasPipeline,
@@ -75,6 +82,8 @@ import { toast } from "sonner";
 export const Route = createFileRoute("/projetos/")({ component: ProjetosPage });
 
 type Visao = "pipeline" | "semana" | "lista";
+const overviewTabClassName =
+  "h-11 rounded-none border-b-2 border-transparent bg-transparent px-3 text-sm font-semibold text-muted-foreground shadow-none transition-[color,border-color] data-[state=active]:border-[var(--primary-ui)] data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none";
 const CORES_CLIENTE = [
   "#90F826",
   "#66B8FF",
@@ -99,6 +108,17 @@ function iniciais(nome: string) {
     .slice(0, 2)
     .join("")
     .toUpperCase();
+}
+
+function corPrioridade(prioridade: Tarefa["prioridade"]) {
+  return (
+    {
+      baixa: "oklch(0.68 0.025 250)",
+      media: "var(--sem-info)",
+      alta: "var(--sem-warn)",
+      urgente: "var(--sem-danger)",
+    }[prioridade] ?? "var(--sem-info)"
+  );
 }
 
 const normalizarNome = normalizeClientName;
@@ -274,6 +294,8 @@ function ProjetosPage() {
     setBusca("");
     setMostrarFechados(false);
   };
+  const temFiltrosAtivos =
+    cliente !== "todos" || responsavel !== "todos" || busca.trim().length > 0 || mostrarFechados;
 
   if (loading || crmLoading) {
     return (
@@ -297,78 +319,103 @@ function ProjetosPage() {
   }
 
   return (
-    <div className="space-y-3 px-4 py-4 md:px-8 md:py-5">
+    <div className="project-kanban-ambient space-y-5 px-4 py-5 md:px-8 md:py-7">
       <NovidadesFluxoProjetos projetos={projetos} />
-      <section className="flex min-w-0 flex-wrap items-stretch overflow-hidden rounded-2xl border border-border/70 bg-surface-1/30 shadow-[0_18px_50px_-38px_rgba(0,0,0,.9)]">
-        <div className="min-w-0 flex-1 overflow-x-auto">
-          <div className="grid min-w-[620px] grid-cols-4">
-            <Metrica label="Produções ativas" valor={ativos.length} />
-            <Metrica label="Tarefas atrasadas" valor={atrasadas} danger={atrasadas > 0} />
-            <Metrica label="Em aprovação" valor={emAprovacao} />
-            <Metrica
-              label="Entregas próximas"
-              valor={marcos.filter((m) => m.status === "pendente").length}
-            />
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="flex items-center gap-4">
+          <span className="kb-nav-icon grid size-12 shrink-0 place-items-center rounded-2xl">
+            <Element3 size={24} color="currentColor" variant="Bulk" />
+          </span>
+          <div>
+            <h1 className="font-display text-3xl font-bold tracking-[-.035em] text-foreground">
+              Projetos
+            </h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Clientes, produções e próximos compromissos em um só lugar.
+            </p>
           </div>
         </div>
-        <div className="flex flex-1 items-center justify-end gap-2 border-t border-border/60 p-3 sm:flex-none sm:border-l sm:border-t-0">
+        <div className="flex items-center gap-2">
           <Button
             variant="outline"
-            size="sm"
             onClick={() => setCentralAberta((v) => !v)}
-            className={cn(centralAberta && "border-primary/35 text-primary")}
+            className={cn(
+              "h-11 rounded-xl border-white/[.08] bg-white/[.025] px-4 font-semibold",
+              centralAberta && "border-primary/35 bg-primary/[.07] text-primary",
+            )}
           >
-            <Notification size={15} color="currentColor" /> Atenção
+            <Notification size={18} color="currentColor" variant="Bulk" /> Atenção
             {atrasadas > 0 && (
-              <span className="ml-1 rounded-full bg-destructive/15 px-1.5 text-[9px] font-bold text-destructive">
+              <span className="ml-1 rounded-full bg-destructive/15 px-2 py-0.5 text-xs font-bold text-destructive ring-1 ring-destructive/20">
                 {atrasadas}
               </span>
             )}
           </Button>
-          <Button size="sm" onClick={() => setClientModal(true)}>
-            <Add size={16} color="currentColor" /> Novo cliente
+          <Button
+            onClick={() => setClientModal(true)}
+            className="h-11 rounded-xl px-5 font-bold shadow-[0_10px_28px_-16px_var(--primary)]"
+          >
+            <Add size={18} color="currentColor" variant="Linear" /> Novo cliente
           </Button>
         </div>
+      </header>
+
+      <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+        <Metrica icon={FolderOpen} label="Produções ativas" valor={ativos.length} />
+        <Metrica icon={Danger} label="Tarefas atrasadas" valor={atrasadas} danger={atrasadas > 0} />
+        <Metrica icon={TickCircle} label="Em aprovação" valor={emAprovacao} />
+        <Metrica
+          icon={Calendar}
+          label="Entregas próximas"
+          valor={marcos.filter((m) => m.status === "pendente").length}
+        />
       </section>
 
       <div className="grid grid-cols-1 gap-5">
         <div className="flex min-w-0 flex-col gap-4">
-          <section className="order-1">
-            <div className="mb-3 flex items-end justify-between gap-3">
-              <div>
-                <h2 className="font-display text-base font-semibold">
-                  {mostrarFechados ? "Clientes com projetos fechados" : "Clientes ativos"}
-                </h2>
-                <p className="text-xs text-muted-foreground">
-                  {mostrarFechados
-                    ? "Consulte produções já encerradas."
-                    : "Clique para abrir o workspace do cliente."}
-                </p>
+          <section className="order-1 rounded-2xl border border-white/[.07] bg-white/[.018] p-4 sm:p-5">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <span className="kb-workspace-icon grid size-10 shrink-0 place-items-center rounded-xl">
+                  <Buildings2 size={20} color="currentColor" variant="Bulk" />
+                </span>
+                <div>
+                  <h2 className="font-display text-lg font-bold tracking-[-.02em]">
+                    {mostrarFechados ? "Clientes com projetos fechados" : "Clientes ativos"}
+                  </h2>
+                  <p className="mt-0.5 text-[13px] text-muted-foreground">
+                    {mostrarFechados
+                      ? "Consulte produções já encerradas."
+                      : "Abra um cliente para acessar projetos, equipe e entregas."}
+                  </p>
+                </div>
               </div>
               <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
-                  size="sm"
                   onClick={() => setMostrarClientesArquivados((valor) => !valor)}
+                  className="h-10 rounded-xl border-white/[.08] bg-white/[.025] px-3.5 text-sm font-semibold"
                 >
                   {mostrarClientesArquivados ? (
-                    <ArchiveRestore className="size-3.5" />
+                    <ArchiveRestore className="size-4" />
                   ) : (
-                    <Archive className="size-3.5" />
+                    <Archive className="size-4" />
                   )}
                   {mostrarClientesArquivados
                     ? "Ver ativos"
                     : `Arquivados (${projectClients.filter((item) => item.arquivado).length})`}
                 </Button>
-                <button
-                  className="shrink-0 text-xs font-medium text-primary"
-                  onClick={limparFiltros}
-                >
-                  Limpar filtros
-                </button>
+                {temFiltrosAtivos && (
+                  <button
+                    className="h-10 shrink-0 rounded-xl px-3 text-xs font-semibold text-primary transition hover:bg-primary/[.07]"
+                    onClick={limparFiltros}
+                  >
+                    Limpar filtros
+                  </button>
+                )}
               </div>
             </div>
-            <div className="flex gap-2 overflow-x-auto px-0.5 py-1.5">
+            <div className="kb-scrollbar flex gap-3 overflow-x-auto px-0.5 pb-2 pt-0.5">
               {clientesOrdenados.map((nome) => {
                 const grupo = gruposClientesPorNome.get(normalizarNome(nome));
                 const ps = grupo?.projetos ?? [];
@@ -392,13 +439,17 @@ function ProjetosPage() {
                     }}
                     style={{ "--cliente": cor } as React.CSSProperties}
                     className={cn(
-                      "group relative min-w-[240px] cursor-pointer rounded-xl border bg-surface-1/40 p-4 text-left transition-[transform,border-color,background-color,box-shadow,opacity] duration-200 hover:z-10 hover:scale-[1.015] hover:border-[var(--cliente)] hover:bg-surface-1/65 hover:shadow-[0_12px_30px_-18px_var(--cliente)]",
+                      "group relative min-w-[276px] cursor-pointer overflow-hidden rounded-2xl border bg-surface-1/45 p-4 text-left transition-[transform,border-color,background-color,opacity] duration-200 hover:z-10 hover:-translate-y-px hover:border-[color-mix(in_srgb,var(--cliente)_48%,transparent)] hover:bg-surface-1/70",
                       cliente === nome
                         ? "border-[var(--cliente)] bg-surface-1/70"
-                        : "border-border",
+                        : "border-white/[.075]",
                       clienteArrastado === nome && "opacity-45",
                     )}
                   >
+                    <span
+                      aria-hidden="true"
+                      className="absolute left-0 top-5 h-8 w-0.5 rounded-r-full bg-[var(--cliente)] opacity-75"
+                    />
                     <button
                       type="button"
                       onClick={abrirCliente}
@@ -408,7 +459,7 @@ function ProjetosPage() {
                     {clientRecord && (
                       <button
                         type="button"
-                        className="absolute right-2.5 top-2.5 z-10 grid size-6 place-items-center rounded-md text-muted-foreground/55 transition hover:bg-destructive/10 hover:text-destructive"
+                        className="absolute right-3 top-3 z-10 grid size-8 place-items-center rounded-lg text-muted-foreground/55 transition hover:bg-destructive/10 hover:text-destructive"
                         aria-label={
                           clientRecord.arquivado ? `Restaurar ${nome}` : `Arquivar ${nome}`
                         }
@@ -427,16 +478,16 @@ function ProjetosPage() {
                         }}
                       >
                         {clientRecord.arquivado ? (
-                          <ArchiveRestore className="size-3.5" />
+                          <ArchiveRestore className="size-4" />
                         ) : (
-                          <Archive className="size-3.5" />
+                          <Archive className="size-4" />
                         )}
                       </button>
                     )}
                     {!clientRecord && ps.length === 1 && (
                       <button
                         type="button"
-                        className="absolute right-2.5 top-2.5 z-10 grid size-6 place-items-center rounded-md text-muted-foreground/55 transition hover:bg-destructive/10 hover:text-destructive"
+                        className="absolute right-3 top-3 z-10 grid size-8 place-items-center rounded-lg text-muted-foreground/55 transition hover:bg-destructive/10 hover:text-destructive"
                         aria-label={`Excluir projeto ${destino.nome}`}
                         title="Excluir projeto sem cadastro"
                         onClick={(event) => {
@@ -444,7 +495,7 @@ function ProjetosPage() {
                           setProjetoSemCadastroParaExcluir(destino);
                         }}
                       >
-                        <Trash2 className="size-3.5" />
+                        <Trash2 className="size-4" />
                       </button>
                     )}
                     <button
@@ -457,34 +508,40 @@ function ProjetosPage() {
                       onDragEnd={() => {
                         setClienteArrastado(null);
                       }}
-                      className="absolute right-9 top-2.5 z-10 grid size-6 cursor-grab place-items-center rounded-md text-muted-foreground/35 transition hover:bg-surface-2 hover:text-muted-foreground active:cursor-grabbing"
+                      className="absolute right-12 top-3 z-10 grid size-8 cursor-grab place-items-center rounded-lg text-muted-foreground/35 transition hover:bg-surface-2 hover:text-muted-foreground active:cursor-grabbing"
                       aria-label="Arrastar para reordenar"
                       title="Arrastar para reordenar"
                     >
-                      <GripVertical size={15} />
+                      <GripVertical size={17} />
                     </button>
                     <div className="pointer-events-none relative z-[1] flex items-center gap-3">
-                      <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-[color-mix(in_srgb,var(--cliente)_16%,transparent)] text-xs font-bold text-[var(--cliente)]">
+                      <span className="grid size-11 shrink-0 place-items-center rounded-xl border border-[color-mix(in_srgb,var(--cliente)_18%,transparent)] bg-[color-mix(in_srgb,var(--cliente)_13%,transparent)] text-sm font-bold text-[var(--cliente)]">
                         {iniciais(nome)}
                       </span>
-                      <div className="min-w-0 pr-12">
-                        <p className="truncate text-sm font-semibold">{nome}</p>
-                        <p className="text-[11px] text-muted-foreground">
+                      <div className="min-w-0 pr-16">
+                        <p className="truncate font-display text-[15px] font-bold tracking-[-.01em]">
+                          {nome}
+                        </p>
+                        <p className="mt-0.5 text-[13px] text-muted-foreground">
                           {ps.length} projeto{ps.length === 1 ? "" : "s"}{" "}
                           {mostrarFechados ? "fechado" : "ativo"}
                           {ps.length === 1 ? "" : "s"}
                         </p>
                         {!clientRecord && (
-                          <p className="mt-0.5 text-[9px] text-amber-400">Sem cadastro vinculado</p>
+                          <p className="mt-1 text-xs font-semibold text-amber-400">
+                            Sem cadastro vinculado
+                          </p>
                         )}
                       </div>
                     </div>
-                    <div className="pointer-events-none relative z-[1] mt-3.5 flex justify-between border-t border-border/40 pt-2.5 text-[11px] text-muted-foreground">
+                    <div className="pointer-events-none relative z-[1] mt-4 flex items-center justify-between border-t border-white/[.06] pt-3 text-[13px] text-muted-foreground">
                       <span>
                         {pendentes} tarefa{pendentes === 1 ? "" : "s"} aberta
                         {pendentes === 1 ? "" : "s"}
                       </span>
-                      <span className="text-[var(--cliente)]">Abrir →</span>
+                      <span className="inline-flex items-center gap-1 font-semibold text-[var(--cliente)]">
+                        Abrir <ArrowRight2 size={14} color="currentColor" variant="Linear" />
+                      </span>
                     </div>
                   </div>
                 );
@@ -492,36 +549,56 @@ function ProjetosPage() {
             </div>
           </section>
 
-          <section className="order-2 overflow-hidden rounded-2xl border border-border bg-surface-1/25 shadow-[0_18px_50px_-36px_rgba(0,0,0,.8)]">
-            <div className="border-b border-border/70 p-2.5">
-              <div className="flex flex-wrap items-center gap-2">
+          <section className="order-2 overflow-hidden rounded-2xl border border-white/[.075] bg-surface-1/30 shadow-[0_24px_60px_-46px_rgba(0,0,0,.9)]">
+            <div className="border-b border-white/[.07] px-4 pt-4 sm:px-5 sm:pt-5">
+              <div className="flex flex-wrap items-end justify-between gap-4">
+                <div className="flex items-center gap-3 pb-3">
+                  <span className="kb-workspace-icon grid size-10 shrink-0 place-items-center rounded-xl">
+                    <TaskSquare size={20} color="currentColor" variant="Bulk" />
+                  </span>
+                  <div>
+                    <h2 className="font-display text-lg font-bold tracking-[-.02em]">
+                      Planejamento
+                    </h2>
+                    <p className="mt-0.5 text-[13px] text-muted-foreground">
+                      Acompanhe o fluxo, a semana ou todos os projetos.
+                    </p>
+                  </div>
+                </div>
                 <Tabs value={visao} onValueChange={(v) => setVisao(v as Visao)}>
-                  <TabsList className="h-9">
-                    <TabsTrigger value="pipeline" className="text-sm">
+                  <TabsList className="h-11 rounded-none bg-transparent p-0">
+                    <TabsTrigger value="pipeline" className={overviewTabClassName}>
+                      <Element3 size={16} color="currentColor" variant="Bulk" />
                       Pipeline
                     </TabsTrigger>
-                    <TabsTrigger value="semana" className="text-sm">
+                    <TabsTrigger value="semana" className={overviewTabClassName}>
+                      <Calendar size={16} color="currentColor" variant="Bulk" />
                       Semana
                     </TabsTrigger>
-                    <TabsTrigger value="lista" className="text-sm">
+                    <TabsTrigger value="lista" className={overviewTabClassName}>
+                      <TaskSquare size={16} color="currentColor" variant="Bulk" />
                       Lista
                     </TabsTrigger>
                   </TabsList>
                 </Tabs>
+              </div>
+            </div>
+            <div className="border-b border-white/[.07] bg-black/[.08] p-3 sm:px-4">
+              <div className="flex flex-wrap items-center gap-2.5">
                 {visao === "semana" && (
-                  <div className="flex h-9 items-center gap-1 rounded-lg border border-border/60 bg-surface-1/35 p-1">
+                  <div className="flex h-10 items-center gap-1 rounded-xl border border-white/[.075] bg-white/[.025] p-1">
                     <button
                       type="button"
                       aria-label="Semana anterior"
                       onClick={() => setSemanaOffset((v) => v - 1)}
-                      className="grid size-7 place-items-center rounded-md text-muted-foreground transition hover:bg-surface-2 hover:text-foreground"
+                      className="grid size-8 place-items-center rounded-lg text-muted-foreground transition hover:bg-surface-2 hover:text-foreground"
                     >
                       <ArrowLeft2 size={15} color="currentColor" />
                     </button>
                     <button
                       type="button"
                       onClick={() => setSemanaOffset(0)}
-                      className="min-w-[120px] rounded-md px-1 text-[11px] font-medium tabular-nums hover:bg-surface-2"
+                      className="min-w-[136px] rounded-lg px-1 text-[13px] font-semibold tabular-nums hover:bg-surface-2"
                     >
                       {format(semanaInicio, "dd MMM", { locale: ptBR })} —{" "}
                       {format(semanaFim, "dd MMM", { locale: ptBR })}
@@ -530,15 +607,15 @@ function ProjetosPage() {
                       type="button"
                       aria-label="Próxima semana"
                       onClick={() => setSemanaOffset((v) => v + 1)}
-                      className="grid size-7 place-items-center rounded-md text-muted-foreground transition hover:bg-surface-2 hover:text-foreground"
+                      className="grid size-8 place-items-center rounded-lg text-muted-foreground transition hover:bg-surface-2 hover:text-foreground"
                     >
                       <ArrowRight2 size={15} color="currentColor" />
                     </button>
                   </div>
                 )}
-                <div className="relative min-w-[150px] flex-1">
+                <div className="relative min-w-[220px] flex-1">
                   <SearchNormal
-                    size={15}
+                    size={17}
                     color="currentColor"
                     className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
                   />
@@ -546,11 +623,17 @@ function ProjetosPage() {
                     value={busca}
                     onChange={(e) => setBusca(e.target.value)}
                     placeholder="Buscar projeto ou cliente…"
-                    className="h-9 border-border/60 bg-background/35 pl-9 text-xs"
+                    className="h-10 rounded-xl border-white/[.075] bg-white/[.025] pl-10 text-sm"
                   />
                 </div>
                 <Select value={responsavel} onValueChange={setResponsavel}>
-                  <SelectTrigger className="h-9 w-[135px] text-xs">
+                  <SelectTrigger className="h-10 w-[170px] rounded-xl border-white/[.075] bg-white/[.025] text-sm">
+                    <Profile2User
+                      size={16}
+                      color="currentColor"
+                      variant="Bulk"
+                      className="shrink-0 text-muted-foreground"
+                    />
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -563,7 +646,13 @@ function ProjetosPage() {
                   </SelectContent>
                 </Select>
                 <Select value={cliente} onValueChange={setCliente}>
-                  <SelectTrigger className="h-9 w-[145px] text-xs">
+                  <SelectTrigger className="h-10 w-[180px] rounded-xl border-white/[.075] bg-white/[.025] text-sm">
+                    <Buildings2
+                      size={16}
+                      color="currentColor"
+                      variant="Bulk"
+                      className="shrink-0 text-muted-foreground"
+                    />
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -583,16 +672,16 @@ function ProjetosPage() {
                     setVisao("lista");
                   }}
                   className={cn(
-                    "inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-xs transition",
+                    "inline-flex h-10 items-center gap-2 rounded-xl border px-3.5 text-sm font-semibold transition",
                     mostrarFechados
                       ? "border-primary/40 bg-primary/10 text-primary"
                       : "border-border/60 text-muted-foreground hover:text-foreground",
                   )}
                 >
-                  <Archive className="size-3.5" />
+                  <Archive className="size-4" />
                   {mostrarFechados ? "Ver ativos" : "Fechados"}
                   {fechados.length > 0 && (
-                    <span className="rounded bg-surface-2 px-1.5 py-0.5 text-[9px]">
+                    <span className="rounded bg-surface-2 px-1.5 py-0.5 text-xs">
                       {fechados.length}
                     </span>
                   )}
@@ -620,6 +709,7 @@ function ProjetosPage() {
               <Lista
                 projetos={filtrados}
                 tarefas={tarefasVisiveis}
+                coresClientes={coresClientes}
                 onAbrir={(id) => navigate({ to: "/projetos/$id", params: { id } })}
               />
             )}
@@ -706,7 +796,7 @@ function ExcluirProjetoSemCadastroDialog({
           </DialogDescription>
         </DialogHeader>
         <label className="space-y-1.5">
-          <span className="text-[11px] text-muted-foreground">
+          <span className="text-xs text-muted-foreground">
             Digite <strong className="text-foreground">EXCLUIR</strong> para confirmar.
           </span>
           <Input
@@ -770,7 +860,7 @@ function ArquivarClienteDialog({
             restaurá-lo depois.
           </div>
           <label className="space-y-1.5">
-            <span className="text-[11px] text-muted-foreground">
+            <span className="text-xs text-muted-foreground">
               Digite <strong className="text-foreground">{cliente?.nome}</strong> para confirmar.
             </span>
             <Input
@@ -795,20 +885,40 @@ function ArquivarClienteDialog({
   );
 }
 
-function Metrica({ label, valor, danger }: { label: string; valor: number; danger?: boolean }) {
+function Metrica({
+  icon: Icon,
+  label,
+  valor,
+  danger,
+}: {
+  icon: IconsaxIcon;
+  label: string;
+  valor: number;
+  danger?: boolean;
+}) {
   return (
-    <div className="border-r border-border/60 px-4 py-3 last:border-r-0">
-      <p className="text-[9px] font-semibold uppercase tracking-[.12em] text-muted-foreground">
-        {label}
-      </p>
-      <p
+    <div className="flex min-w-0 items-center gap-3.5 rounded-2xl border border-white/[.07] bg-white/[.025] p-4 shadow-[0_18px_44px_-38px_rgba(0,0,0,.9)] sm:p-5">
+      <span
         className={cn(
-          "mt-1 font-display text-xl font-semibold tabular-nums",
-          danger && "text-destructive",
+          "kb-workspace-icon grid size-11 shrink-0 place-items-center rounded-xl",
+          danger && "border-destructive/20 bg-destructive/[.07] text-destructive",
         )}
       >
-        {valor}
-      </p>
+        <Icon size={21} color="currentColor" variant="Bulk" />
+      </span>
+      <div className="min-w-0">
+        <p className="truncate text-xs font-bold uppercase tracking-[.08em] text-muted-foreground">
+          {label}
+        </p>
+        <p
+          className={cn(
+            "mt-1 font-display text-2xl font-bold tabular-nums tracking-[-.03em]",
+            danger && "text-destructive",
+          )}
+        >
+          {valor}
+        </p>
+      </div>
     </div>
   );
 }
@@ -825,51 +935,49 @@ function ProjetoCard({
   onAbrir: () => void;
 }) {
   const r = calcularResumoProgresso(p, tarefas);
-  const saude = SAUDE_ESTILO[r.saude];
   return (
     <button
       onClick={onAbrir}
       style={{ "--projeto": cor, "--progress-accent": cor } as React.CSSProperties}
       className={cn(
-        "group relative w-full overflow-hidden rounded-2xl border border-border/70 bg-gradient-to-br from-card via-card to-surface-2/40 p-4 pl-[18px] text-left shadow-[0_12px_34px_-26px_rgba(0,0,0,.95)] transition duration-200 hover:-translate-y-0.5 hover:border-[var(--projeto)] hover:shadow-[0_18px_40px_-25px_var(--projeto)]",
+        "kb-glass-card group relative w-full overflow-hidden rounded-xl p-3.5 text-left transition-[transform,border-color,background-color,opacity] duration-150 hover:-translate-y-px hover:border-[var(--kb-border-strong)]",
         p.arquivado && "opacity-45 hover:opacity-80",
       )}
     >
-      <span className="absolute inset-y-0 left-0 w-[3px] bg-[var(--projeto)]" />
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate text-[13px] font-semibold leading-snug">{p.nome}</p>
-          <p className="mt-1 truncate text-[10px] text-muted-foreground">{p.cliente}</p>
+          <p className="truncate font-display text-base font-bold leading-snug tracking-[-.015em]">
+            {p.nome}
+          </p>
+          <p className="mt-1.5 flex items-center gap-2 truncate text-[13px] font-medium text-[var(--kb-text-muted)]">
+            <span className="size-1.5 shrink-0 rounded-full bg-[var(--projeto)]" />
+            <span className="truncate">{p.cliente}</span>
+          </p>
         </div>
-        <span
-          className={cn(
-            "shrink-0 rounded-full border px-2 py-1 text-[9px] font-semibold tabular-nums",
-            saude.badge,
-          )}
-        >
+        <span className="shrink-0 text-[13px] font-bold tabular-nums text-[var(--projeto)]">
           {r.percentual}%
         </span>
       </div>
       <Progress
         value={r.percentual}
-        indicatorClassName="client-progress-gradient"
-        className="mt-4 h-1 bg-white/[.06]"
+        indicatorClassName="bg-[var(--projeto)]"
+        className="mt-3.5 h-1 bg-white/[.07]"
       />
-      <div className="mt-3 flex items-center justify-between gap-3 border-t border-border/45 pt-3 text-[9px] text-muted-foreground">
+      <div className="mt-3 flex items-center justify-between gap-3 border-t border-white/[.06] pt-3 text-xs text-[var(--kb-text-muted)]">
         <span className="inline-flex min-w-0 items-center gap-1.5 truncate">
           {p.arquivado ? (
             <>
-              <Archive className="size-3" />
+              <Archive className="size-4" />
               Fechado
             </>
           ) : p.dataEntrega ? (
             <>
-              <Calendar size={11} color="currentColor" />
+              <Calendar size={15} color="currentColor" variant="Bulk" />
               {format(new Date(p.dataEntrega), "dd MMM", { locale: ptBR })}
             </>
           ) : (
             <>
-              <Clock size={11} color="currentColor" />
+              <Clock className="size-[15px]" />
               Sem prazo
             </>
           )}
@@ -897,36 +1005,33 @@ function Pipeline({
 }) {
   const colunas = colunasPipeline(projetos, tarefas);
   return (
-    <div className="flex min-h-[430px] gap-3 overflow-x-auto p-3">
-      {colunas.map((coluna, index) => {
+    <div className="kb-kanban-stage kb-scrollbar flex min-h-[490px] gap-3 overflow-x-auto p-3">
+      {colunas.map((coluna) => {
         const ps = projetos.filter(
           (projeto) => chaveAtualPipeline(projeto, tarefas) === coluna.key,
         );
         return (
-          <div key={coluna.key} className="relative w-[280px] shrink-0 p-1.5">
-            {index < colunas.length - 1 && (
-              <span
-                aria-hidden="true"
-                className="absolute -right-[7px] inset-y-1 w-px bg-gradient-to-b from-transparent via-border/80 to-transparent"
-              />
-            )}
-            <div className="mb-3 flex h-11 items-center justify-between rounded-xl border border-border/70 bg-surface-1/65 px-3 shadow-sm">
+          <div
+            key={coluna.key}
+            className="kb-glass-column relative w-[288px] shrink-0 rounded-2xl p-2.5"
+          >
+            <div className="mb-1.5 flex h-9 items-center justify-between px-2">
               <div className="flex min-w-0 items-center gap-2 pr-2">
                 {coluna.personalizada && (
                   <span
-                    className="size-1.5 shrink-0 rounded-full bg-primary shadow-[0_0_7px_var(--primary)]"
+                    className="size-1.5 shrink-0 rounded-full bg-[var(--primary-ui)]"
                     title="Etapa personalizada"
                   />
                 )}
-                <h3 className="min-w-0 truncate text-[11px] font-semibold uppercase tracking-[.12em] text-muted-foreground">
+                <h3 className="min-w-0 truncate text-xs font-bold uppercase tracking-[.09em] text-muted-foreground">
                   {getFaseInfo(coluna.token).label}
                 </h3>
               </div>
-              <span className="grid size-6 shrink-0 place-items-center rounded-full bg-surface-2 text-[9px] font-semibold tabular-nums text-muted-foreground">
+              <span className="shrink-0 px-1 text-xs font-medium tabular-nums text-[var(--kb-text-faint)]">
                 {ps.length}
               </span>
             </div>
-            <div className="space-y-3 px-0.5">
+            <div className="space-y-2">
               {ps.map((p) => (
                 <ProjetoCard
                   key={p.id}
@@ -937,7 +1042,7 @@ function Pipeline({
                 />
               ))}
               {!ps.length && (
-                <p className="grid min-h-24 place-items-center rounded-xl border border-dashed border-border/30 px-4 text-center text-[10px] text-muted-foreground/40">
+                <p className="grid min-h-24 place-items-center px-5 text-center text-xs leading-relaxed text-[var(--kb-text-faint)]">
                   Nenhuma produção nesta etapa
                 </p>
               )}
@@ -972,7 +1077,7 @@ function Semana({
   return (
     <div className="min-w-0">
       <div className="flex items-center justify-between gap-3 border-b border-border/50 px-3 py-2 2xl:hidden">
-        <p className="text-[10px] text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           Navegue horizontalmente para ver todos os dias
         </p>
         <div className="flex shrink-0 items-center gap-1">
@@ -1012,7 +1117,7 @@ function Semana({
                   />
                 )}
                 <div className="mb-3 flex h-11 items-center justify-between rounded-xl border border-border/70 bg-surface-1/65 px-3 shadow-sm">
-                  <span className="text-[11px] font-medium uppercase text-muted-foreground">
+                  <span className="text-xs font-bold uppercase text-muted-foreground">
                     {format(d, "EEE", { locale: ptBR })}
                   </span>
                   <span
@@ -1034,31 +1139,36 @@ function Semana({
                       <button
                         key={t.id}
                         onClick={() => onAbrir(p.id)}
-                        style={{ "--projeto": cor } as React.CSSProperties}
+                        style={
+                          {
+                            "--projeto": cor,
+                            "--kb-priority": corPrioridade(t.prioridade),
+                          } as React.CSSProperties
+                        }
                         className={cn(
-                          "relative w-full overflow-hidden rounded-2xl border border-border/70 bg-gradient-to-br from-card via-card to-surface-2/40 p-4 pl-[18px] text-left shadow-[0_12px_34px_-26px_rgba(0,0,0,.95)] transition duration-200 hover:-translate-y-0.5 hover:border-[var(--projeto)] hover:shadow-[0_18px_40px_-25px_var(--projeto)]",
+                          "kb-glass-card relative w-full overflow-hidden rounded-xl p-4 text-left transition-[transform,border-color,background-color,opacity] duration-150 hover:-translate-y-px hover:border-[var(--projeto)]",
                           t.concluida && "opacity-55",
                         )}
                       >
-                        <span className="absolute inset-y-0 left-0 w-[3px] bg-[var(--projeto)]" />
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="text-[10px] font-medium tabular-nums text-muted-foreground">
+                        <span aria-hidden="true" className="kb-card-neon-dot" />
+                        <div className="flex items-center justify-between gap-2 pr-4">
+                          <p className="text-xs font-semibold tabular-nums text-muted-foreground">
                             {format(new Date(t.prazo!), "HH:mm")}
                           </p>
                           {t.concluida ? (
-                            <span className="inline-flex items-center gap-1 text-[9px] font-semibold uppercase text-success">
-                              <TickCircle size={11} color="currentColor" />
+                            <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase text-success">
+                              <TickCircle size={15} color="currentColor" variant="Bulk" />
                               Feita
                             </span>
                           ) : atrasada ? (
-                            <span className="text-[9px] font-semibold uppercase text-destructive">
+                            <span className="text-xs font-bold uppercase text-destructive">
                               Atrasada
                             </span>
                           ) : null}
                         </div>
                         <p
                           className={cn(
-                            "mt-3 text-[13px] font-semibold leading-snug",
+                            "mt-3 font-display text-[15px] font-bold leading-snug",
                             t.concluida &&
                               "text-muted-foreground line-through decoration-muted-foreground/70",
                           )}
@@ -1066,18 +1176,19 @@ function Semana({
                           {t.titulo}
                         </p>
                         <div className="mt-3 flex flex-wrap gap-1.5">
-                          <span className="rounded-full bg-surface-2 px-2 py-1 text-[8px] text-muted-foreground">
+                          <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-2.5 py-1 text-xs text-muted-foreground">
+                            <span className="size-1.5 rounded-full bg-[var(--projeto)]" />
                             {p.cliente}
                           </span>
                           <span
-                            className="rounded-full px-2 py-1 text-[8px] font-medium"
+                            className="rounded-full px-2.5 py-1 text-xs font-semibold"
                             style={{ color: cor, backgroundColor: `${cor}14` }}
                           >
                             {resolverNomeFaseNoFluxo(p.fases, t.status)}
                           </span>
                         </div>
-                        <div className="mt-3 flex items-center gap-2 border-t border-border/45 pt-3 text-[9px] text-muted-foreground">
-                          <span className="grid size-6 place-items-center rounded-full bg-primary/10 text-[8px] font-bold text-primary ring-1 ring-primary/20">
+                        <div className="mt-3 flex items-center gap-2.5 border-t border-white/[.06] pt-3 text-xs text-muted-foreground">
+                          <span className="grid size-7 place-items-center rounded-lg bg-white/[.045] text-xs font-bold text-foreground ring-1 ring-white/[.07]">
                             {iniciais(t.responsavel)}
                           </span>
                           <span className="truncate">{t.responsavel}</span>
@@ -1086,7 +1197,7 @@ function Semana({
                     );
                   })}
                   {!ts.length && (
-                    <p className="grid min-h-24 place-items-center rounded-xl border border-dashed border-border/30 text-center text-[10px] text-muted-foreground/40">
+                    <p className="grid min-h-24 place-items-center rounded-xl border border-dashed border-border/30 text-center text-xs text-muted-foreground/50">
                       Sem ações planejadas
                     </p>
                   )}
@@ -1103,10 +1214,12 @@ function Semana({
 function Lista({
   projetos,
   tarefas,
+  coresClientes,
   onAbrir,
 }: {
   projetos: Projeto[];
   tarefas: Tarefa[];
+  coresClientes: ReadonlyMap<string, string>;
   onAbrir: (id: string) => void;
 }) {
   if (!projetos.length) {
@@ -1122,48 +1235,76 @@ function Lista({
     );
   }
   return (
-    <div className="divide-y divide-border/60">
+    <div className="space-y-2 p-3 sm:p-4">
       {projetos.map((p) => {
         const r = calcularResumoProgresso(p, tarefas);
         const statusAtual = statusAtualPipeline(p, tarefas);
         const faseAtual = statusAtual ? getFaseInfo(tokenFaseNoFluxo(p, statusAtual)).label : null;
+        const cor = coresClientes.get(normalizarNome(p.cliente)) ?? corCliente(p.cliente);
         return (
           <button
             key={p.id}
             onClick={() => onAbrir(p.id)}
+            style={{ "--projeto": cor } as React.CSSProperties}
             className={cn(
-              "grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-4 p-4 text-left transition hover:bg-surface-2/30",
+              "group grid w-full grid-cols-[44px_minmax(0,1fr)_auto] items-center gap-3.5 rounded-xl border border-white/[.065] bg-white/[.02] p-3.5 text-left transition-[border-color,background-color,opacity] hover:border-[color-mix(in_srgb,var(--projeto)_38%,transparent)] hover:bg-white/[.035] sm:gap-4 sm:p-4",
               p.arquivado && "opacity-45 hover:opacity-80",
             )}
           >
+            <span className="grid size-11 place-items-center rounded-xl border border-[color-mix(in_srgb,var(--projeto)_18%,transparent)] bg-[color-mix(in_srgb,var(--projeto)_12%,transparent)] text-xs font-bold text-[var(--projeto)]">
+              {iniciais(p.cliente)}
+            </span>
             <div className="min-w-0">
-              <p className="truncate text-sm font-medium">{p.nome}</p>
-              <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+              <p className="truncate font-display text-[15px] font-bold tracking-[-.01em]">
+                {p.nome}
+              </p>
+              <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
                 <span className="truncate">
                   {p.cliente} ·{" "}
                   {p.arquivado ? "Fechado" : `${r.total} tarefa${r.total === 1 ? "" : "s"}`}
                 </span>
                 {!p.arquivado && faseAtual && (
-                  <span className="max-w-full truncate rounded-full border border-primary/20 bg-primary/[0.08] px-2 py-0.5 text-[9px] font-medium text-primary">
+                  <span className="max-w-full truncate rounded-full border border-primary/20 bg-primary/[0.08] px-2 py-0.5 text-xs font-semibold text-primary">
                     {faseAtual}
                   </span>
                 )}
               </div>
             </div>
-            <div className="flex items-center gap-4 text-xs text-muted-foreground">
-              <span className="hidden items-center gap-1.5 sm:inline-flex">
+            <div className="flex items-center gap-3 text-xs text-muted-foreground sm:gap-5">
+              <div className="hidden min-w-[120px] sm:block">
+                <div className="mb-1.5 flex items-center justify-between gap-3">
+                  <span>Progresso</span>
+                  <strong className="font-bold tabular-nums text-[var(--projeto)]">
+                    {r.percentual}%
+                  </strong>
+                </div>
+                <Progress
+                  value={r.percentual}
+                  indicatorClassName="bg-[var(--projeto)]"
+                  className="h-1 bg-white/[.07]"
+                />
+              </div>
+              <span className="hidden min-w-[92px] items-center gap-1.5 lg:inline-flex">
                 {p.arquivado ? (
-                  <Archive className="size-3" />
+                  <Archive className="size-4" />
                 ) : (
-                  <Clock size={12} color="currentColor" />
+                  <Clock size={15} color="currentColor" />
                 )}
                 {p.arquivado
                   ? "Arquivado"
                   : p.dataEntrega
                     ? format(new Date(p.dataEntrega), "dd MMM")
-                    : "Sem prazo geral"}
+                    : "Sem prazo"}
               </span>
-              <span>{r.percentual}%</span>
+              <span className="font-bold tabular-nums text-[var(--projeto)] sm:hidden">
+                {r.percentual}%
+              </span>
+              <ArrowRight2
+                size={17}
+                color="currentColor"
+                variant="Linear"
+                className="transition-transform group-hover:translate-x-0.5 group-hover:text-[var(--projeto)]"
+              />
             </div>
           </button>
         );

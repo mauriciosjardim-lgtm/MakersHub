@@ -1,145 +1,134 @@
-import { useState } from "react";
-import {
-  CheckCircle2,
-  ChevronRight,
-  Eye,
-  ExternalLink,
-  KeyRound,
-  PackageCheck,
-  Play,
-  Send,
-  Sparkles,
-} from "lucide-react";
+import { useState, type CSSProperties } from "react";
+import { Eye, ExternalLink, KeyRound, PackageCheck, Play, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { Projeto } from "@/lib/mock/projetos";
-import { portalDisplayProgress, portalSlug } from "@/lib/portal-cliente";
+import { portalSlug } from "@/lib/portal-cliente";
 import { cn } from "@/lib/utils";
-import { ClientPortalProjectPanel } from "./client-portal-panel";
+import { ClientPortalProjectPanel, type ClientPortalMetrics } from "./client-portal-panel";
 import { ClientPortalUsersPanel } from "./client-portal-users-panel";
 
 type WorkspaceView = "status" | "approvals" | "deliveries" | "access";
 
-const PUBLIC_PHASE_LABELS: Record<string, string> = {
-  preparacao: "Preparação",
-  planejamento: "Planejamento",
-  producao: "Produção",
-  editando: "Editando",
-  aguardando_aprovacao: "Aguardando aprovação",
-  ajustes: "Ajustes",
-  aprovado: "Aprovado",
-  entregue: "Entregue",
-};
-
 const NAVIGATION: Array<{
   id: WorkspaceView;
   label: string;
-  description: string;
   icon: typeof Eye;
-  tone: string;
 }> = [
   {
     id: "status",
     label: "Visão do cliente",
-    description: "Status e progresso",
     icon: Eye,
-    tone: "text-primary",
   },
   {
     id: "approvals",
     label: "Aprovações",
-    description: "Cortes para revisão",
     icon: Send,
-    tone: "text-warning",
   },
   {
     id: "deliveries",
     label: "Entregas",
-    description: "Materiais finais",
     icon: PackageCheck,
-    tone: "text-success",
   },
   {
     id: "access",
     label: "Acessos",
-    description: "Usuários e senhas",
     icon: KeyRound,
-    tone: "text-[#66B8FF]",
   },
 ];
+
+function PortalNavigation({
+  view,
+  onChange,
+}: {
+  view: WorkspaceView;
+  onChange: (view: WorkspaceView) => void;
+}) {
+  return (
+    <nav
+      className="kb-scrollbar flex min-w-0 flex-1 gap-1.5 overflow-x-auto p-1.5"
+      aria-label="Gestão da área do cliente"
+    >
+      {NAVIGATION.map((item) => {
+        const Icon = item.icon;
+        const selected = view === item.id;
+        return (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => onChange(item.id)}
+            className={cn(
+              "group relative flex h-11 min-w-[150px] flex-1 items-center gap-2.5 rounded-xl border px-2.5 text-left transition-[color,border-color,background-color,box-shadow]",
+              selected
+                ? "border-[color-mix(in_srgb,var(--workspace-accent)_38%,transparent)] bg-[color-mix(in_srgb,var(--workspace-accent)_9%,transparent)] shadow-[inset_0_1px_0_rgba(255,255,255,.05)]"
+                : "border-transparent text-muted-foreground hover:border-white/[.08] hover:bg-white/[.03] hover:text-foreground",
+            )}
+          >
+            <span
+              className={cn(
+                "grid size-8 shrink-0 place-items-center rounded-xl border transition-[color,border-color,background-color,box-shadow]",
+                selected
+                  ? "border-current/25 bg-background/45 text-[var(--workspace-accent)] shadow-[inset_0_1px_0_rgba(255,255,255,.06),0_0_20px_-13px_currentColor]"
+                  : "border-white/[.07] bg-white/[.025] text-muted-foreground",
+              )}
+            >
+              <Icon className="size-4" />
+            </span>
+            <span
+              className={cn(
+                "truncate text-sm font-bold",
+                selected ? "text-foreground" : "text-inherit",
+              )}
+            >
+              {item.label}
+            </span>
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
 
 export function ClientPortalWorkspace({
   project,
   clientId = project.clienteId,
   clientName = project.cliente,
+  onMetricsChange,
 }: {
   project: Projeto;
   clientId?: string;
   clientName?: string;
+  onMetricsChange?: (metrics: ClientPortalMetrics) => void;
 }) {
   const [view, setView] = useState<WorkspaceView>("status");
-  const phaseLabel = PUBLIC_PHASE_LABELS[project.portalPhase ?? "preparacao"] ?? "Preparação";
-  const progress = portalDisplayProgress(project.portalProgress, project.portalPhase);
+  const navigation = <PortalNavigation view={view} onChange={setView} />;
 
   return (
-    <section className="relative overflow-hidden rounded-2xl border border-border/70 bg-surface-1/30 shadow-[0_24px_80px_-48px_rgba(0,0,0,.85)]">
+    <section
+      className="kb-client-workspace relative overflow-hidden rounded-2xl border border-white/[.075] bg-white/[.022] shadow-[0_24px_70px_-52px_rgba(0,0,0,.9)]"
+      style={{ "--workspace-accent": "var(--primary)" } as CSSProperties}
+    >
       <div className="pointer-events-none absolute inset-x-0 top-0 h-52 overflow-hidden">
-        <div className="absolute -left-24 -top-40 size-80 rounded-full bg-primary/10 blur-3xl" />
-        <div className="absolute right-0 top-0 h-px w-2/3 bg-gradient-to-l from-primary/35 to-transparent" />
+        <div className="absolute -left-28 -top-44 size-80 rounded-full bg-[color-mix(in_srgb,var(--workspace-accent)_7%,transparent)] blur-3xl" />
       </div>
 
-      <header className="relative grid gap-6 border-b border-border/60 px-5 py-5 lg:grid-cols-[1fr_auto] lg:px-6">
-        <div className="flex min-w-0 items-start gap-4">
-          <span className="relative grid size-12 shrink-0 place-items-center overflow-hidden rounded-2xl border border-primary/25 bg-primary/10 text-primary shadow-[0_0_30px_-10px_hsl(var(--primary)/.7)]">
-            <Play className="ml-0.5 size-5 fill-current" />
-            <span className="absolute inset-x-2 bottom-1 h-px bg-primary/50" />
+      <header className="relative flex flex-wrap items-center justify-between gap-4 border-b border-white/[.07] px-4 py-4 sm:px-5">
+        <div className="flex min-w-0 items-center gap-3.5">
+          <span className="relative grid size-11 shrink-0 place-items-center overflow-hidden rounded-2xl border border-[color-mix(in_srgb,var(--workspace-accent)_24%,transparent)] bg-[color-mix(in_srgb,var(--workspace-accent)_11%,transparent)] text-[var(--workspace-accent)] shadow-[inset_0_1px_0_rgba(255,255,255,.07),0_0_24px_-15px_var(--workspace-accent)]">
+            <Play className="ml-0.5 size-[18px] fill-current" />
           </span>
           <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[9px] font-bold uppercase tracking-[0.24em] text-primary">
-                Makers Members
-              </span>
-              <span
-                className={cn(
-                  "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[8px] font-semibold uppercase tracking-wider",
-                  project.portalVisible
-                    ? "border-success/25 bg-success/10 text-success"
-                    : "border-border/80 bg-background/30 text-muted-foreground",
-                )}
-              >
-                <span
-                  className={cn(
-                    "size-1.5 rounded-full",
-                    project.portalVisible ? "bg-success" : "bg-muted-foreground/60",
-                  )}
-                />
-                {project.portalVisible ? "Visível ao cliente" : "Portal oculto"}
-              </span>
-            </div>
-            <h2 className="mt-2 truncate font-display text-xl font-semibold tracking-tight">
-              Central do cliente
-            </h2>
-            <p className="mt-1 max-w-2xl text-[11px] leading-5 text-muted-foreground">
-              Gerencie o que{" "}
-              <strong className="font-medium text-foreground">{project.cliente}</strong> acompanha,
-              aprova e recebe neste projeto.
+            <p className="truncate font-display text-[15px] font-bold text-foreground">
+              Portal do cliente
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3 self-center">
-          <div className="hidden min-w-36 border-r border-border/70 pr-4 text-right sm:block">
-            <p className="text-[8px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-              Experiência publicada
-            </p>
-            <p className="mt-1 text-xs font-medium">{phaseLabel}</p>
-            <div className="mt-2 ml-auto h-1 w-28 overflow-hidden rounded-full bg-surface-3">
-              <div
-                className="h-full rounded-full bg-gradient-to-r from-primary to-primary-glow"
-                style={{ width: `${Math.max(0, Math.min(100, progress))}%` }}
-              />
-            </div>
-          </div>
-          <Button variant="outline" size="sm" asChild>
+        <div className="flex items-center gap-2.5 self-center">
+          <Button
+            variant="outline"
+            asChild
+            className="h-10 rounded-xl border-white/[.08] bg-white/[.025] px-4 font-semibold"
+          >
             <a href={`/portal/${portalSlug(project.cliente)}`} target="_blank" rel="noreferrer">
               <ExternalLink className="size-3.5" />
               Ver experiência
@@ -148,90 +137,21 @@ export function ClientPortalWorkspace({
         </div>
       </header>
 
-      <nav
-        className="relative flex overflow-x-auto border-b border-border/60 bg-background/15 sm:grid sm:grid-cols-2 lg:grid-cols-4"
-        aria-label="Gestão da área do cliente"
-      >
-        {NAVIGATION.map((item, index) => {
-          const Icon = item.icon;
-          const selected = view === item.id;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => setView(item.id)}
-              className={cn(
-                "group relative flex min-h-[76px] min-w-[176px] flex-1 items-center gap-3 border-r border-border/50 px-4 text-left transition-colors last:border-r-0 sm:min-w-0 sm:border-b sm:[&:nth-child(odd)]:border-r lg:border-b-0 lg:border-r lg:last:border-r-0",
-                selected ? "bg-surface-2/70" : "hover:bg-surface-2/35",
-              )}
-            >
-              <span
-                className={cn(
-                  "grid size-9 shrink-0 place-items-center rounded-xl border transition",
-                  selected
-                    ? "border-current/20 bg-background/45 shadow-sm"
-                    : "border-border/60 bg-background/20 text-muted-foreground",
-                  selected && item.tone,
-                )}
-              >
-                <Icon className="size-4" />
-              </span>
-              <span className="min-w-0">
-                <span className="flex items-center gap-1.5">
-                  <span
-                    className={cn(
-                      "truncate text-[11px] font-semibold",
-                      selected ? "text-foreground" : "text-foreground/80",
-                    )}
-                  >
-                    {item.label}
-                  </span>
-                  {selected && <ChevronRight className={cn("size-3", item.tone)} />}
-                </span>
-                <span className="mt-1 block truncate text-[9px] text-muted-foreground">
-                  {item.description}
-                </span>
-              </span>
-              <span className="absolute right-3 top-3 text-[8px] font-medium text-muted-foreground/40">
-                0{index + 1}
-              </span>
-              {selected && (
-                <span className="absolute inset-x-4 bottom-0 h-0.5 rounded-full bg-primary" />
-              )}
-            </button>
-          );
-        })}
-      </nav>
-
-      <div className="relative p-4 sm:p-5 lg:p-6">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 px-1">
-          <div>
-            <p className="flex items-center gap-2 text-xs font-semibold">
-              <Sparkles className="size-3.5 text-primary" />
-              {NAVIGATION.find((item) => item.id === view)?.label}
-            </p>
-            <p className="mt-1 text-[9px] text-muted-foreground">
-              {view === "status" &&
-                "Controle exatamente a informação que aparece na página inicial do cliente."}
-              {view === "approvals" &&
-                "Envie versões para revisão e acompanhe as decisões sem sair do projeto."}
-              {view === "deliveries" &&
-                "Disponibilize links finais organizados, sem abrir uma nova aprovação."}
-              {view === "access" && "Defina quem pode entrar no portal deste cliente."}
-            </p>
-          </div>
-          {view === "status" && project.portalVisible && (
-            <span className="inline-flex items-center gap-1.5 text-[9px] font-medium text-success">
-              <CheckCircle2 className="size-3.5" />
-              Portal publicado
-            </span>
-          )}
-        </div>
-
+      <div className="relative p-3 sm:p-4">
         {view === "access" ? (
-          <ClientPortalUsersPanel clientId={clientId} clientName={clientName} />
+          <ClientPortalUsersPanel
+            clientId={clientId}
+            clientName={clientName}
+            navigation={navigation}
+          />
         ) : (
-          <ClientPortalProjectPanel project={project} showAccessBanner={false} view={view} />
+          <ClientPortalProjectPanel
+            project={project}
+            showAccessBanner={false}
+            view={view}
+            navigation={navigation}
+            onMetricsChange={onMetricsChange}
+          />
         )}
       </div>
     </section>

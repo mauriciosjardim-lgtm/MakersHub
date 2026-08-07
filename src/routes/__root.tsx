@@ -181,7 +181,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       },
       {
         // Carrega Google Fonts de forma não-bloqueante — não trava o primeiro paint
-        children: `(function(){var l=document.createElement('link');l.rel='stylesheet';l.href='https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=Inter:ital,opsz,wght@0,14..32,300..800;1,14..32,300..700&family=Inter+Tight:ital,wght@0,300..800;1,300..700&display=swap';document.head.appendChild(l);})();`,
+        children: `(function(){var l=document.createElement('link');l.rel='stylesheet';l.href='https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=Inter:ital,opsz,wght@0,14..32,300..800;1,14..32,300..700&family=Inter+Tight:ital,wght@0,300..800;1,300..700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap';document.head.appendChild(l);})();`,
       },
     ],
   }),

@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { convidarMembro } from "@/lib/api/equipe.functions";
 import { MODULOS_LABEL, PERMISSOES_PADRAO, type Permissoes } from "@/lib/permissoes";
@@ -51,6 +51,17 @@ const sections = [
 ];
 
 function ConfiguracoesPage() {
+  useEffect(() => {
+    const sectionId = window.location.hash.slice(1);
+    if (!sectionId) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+
   return (
     <div className="mx-auto w-full max-w-[1200px] px-4 py-6 md:px-8 md:py-10">
       <header className="mb-8">
@@ -513,6 +524,30 @@ interface McpToken {
   revogado: boolean;
 }
 
+type McpResult<T> = PromiseLike<{
+  data: T | null;
+  error: { message: string } | null;
+}>;
+
+interface McpTokensTable {
+  select: (columns: string) => {
+    eq: (
+      column: "revogado",
+      value: boolean,
+    ) => {
+      order: (column: "criado_em", options: { ascending: boolean }) => McpResult<McpToken[]>;
+    };
+  };
+  update: (values: { revogado: boolean }) => {
+    eq: (column: "id", value: string) => McpResult<null>;
+  };
+  insert: (values: { empresa_id: string; token_hash: string; nome: string }) => McpResult<null>;
+}
+
+const mcpTokensTable = () =>
+  (supabase.from as unknown as (table: "mcp_tokens") => McpTokensTable)("mcp_tokens");
+type AuthEmpresa = NonNullable<ReturnType<typeof useAuth>["empresa"]>;
+
 function gerarTokenPlano(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(24));
   return "mkr_" + [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -530,26 +565,25 @@ function AgenteIASection() {
   const [wizardAberto, setWizardAberto] = useState(false);
   const [mostrarAcessos, setMostrarAcessos] = useState(false);
 
-  const carregar = async () => {
+  const carregar = useCallback(async () => {
     if (!empresa) return;
-    const { data } = await (supabase as any)
-      .from("mcp_tokens")
+    const { data } = await mcpTokensTable()
       .select("id, nome, criado_em, ultimo_uso, revogado")
       .eq("revogado", false)
       .order("criado_em", { ascending: false });
     setTokens((data as McpToken[]) ?? []);
     setLoading(false);
-  };
+  }, [empresa]);
 
   useEffect(() => {
-    carregar();
-  }, [empresa]);
+    void carregar();
+  }, [carregar]);
 
   const revogar = async (id: string) => {
     if (!confirm("Revogar este acesso? O agente conectado com ele perde o acesso imediatamente."))
       return;
-    await (supabase as any).from("mcp_tokens").update({ revogado: true }).eq("id", id);
-    carregar();
+    await mcpTokensTable().update({ revogado: true }).eq("id", id);
+    void carregar();
   };
 
   return (
@@ -654,7 +688,13 @@ function AgenteIASection() {
 
 type AppAlvo = "chatgpt" | "desktop" | "code";
 
-function ConectarWizard({ empresa, onClose }: { empresa: any; onClose: () => void }) {
+function ConectarWizard({
+  empresa,
+  onClose,
+}: {
+  empresa: AuthEmpresa | null;
+  onClose: () => void;
+}) {
   const [app, setApp] = useState<AppAlvo | null>(null);
   const [step, setStep] = useState(0);
   const [token, setToken] = useState<string | null>(null);
@@ -665,13 +705,11 @@ function ConectarWizard({ empresa, onClose }: { empresa: any; onClose: () => voi
     setGerando(true);
     const plano = gerarTokenPlano();
     const hash = await sha256Hex(plano);
-    const { error } = await (supabase as any)
-      .from("mcp_tokens")
-      .insert({
-        empresa_id: empresa.id,
-        token_hash: hash,
-        nome: app === "code" ? "Claude Code" : "Claude Desktop",
-      });
+    const { error } = await mcpTokensTable().insert({
+      empresa_id: empresa.id,
+      token_hash: hash,
+      nome: app === "code" ? "Claude Code" : "Claude Desktop",
+    });
     setGerando(false);
     if (error) {
       alert("Erro ao gerar acesso: " + error.message);
@@ -1267,7 +1305,7 @@ interface Convite {
 
 function EquipeSection() {
   const { empresa, usuario, session } = useAuth();
-  const isAdmin = (usuario as any)?.role !== "membro";
+  const isAdmin = usuario?.role !== "membro";
 
   const [membros, setMembros] = useState<Membro[]>([]);
   const [convites, setConvites] = useState<Convite[]>([]);
@@ -1287,7 +1325,7 @@ function EquipeSection() {
   const [acessoDraft, setAcessoDraft] = useState<Permissoes>({ ...PERMISSOES_PADRAO });
   const [salvandoAcesso, setSalvandoAcesso] = useState(false);
 
-  const carregar = async () => {
+  const carregar = useCallback(async () => {
     if (!empresa) return;
     const [{ data: m }, { data: c }] = await Promise.all([
       supabase
@@ -1303,11 +1341,11 @@ function EquipeSection() {
     setMembros((m ?? []) as Membro[]);
     setConvites((c ?? []) as Convite[]);
     setLoading(false);
-  };
+  }, [empresa]);
 
   useEffect(() => {
-    carregar();
-  }, [empresa]);
+    void carregar();
+  }, [carregar]);
 
   const convidar = async () => {
     setErroConvite(null);
@@ -1358,8 +1396,8 @@ function EquipeSection() {
       setRole("membro");
       setPermissoes({ ...PERMISSOES_PADRAO });
       carregar();
-    } catch (err: any) {
-      setErroConvite(err?.message ?? "Erro ao convidar. Tente novamente.");
+    } catch (err: unknown) {
+      setErroConvite(err instanceof Error ? err.message : "Erro ao convidar. Tente novamente.");
       console.error("Erro no convidar:", err);
     } finally {
       setEnviando(false);
@@ -1432,7 +1470,7 @@ function EquipeSection() {
   return (
     <section
       id="equipe"
-      className="rounded-2xl border border-border/60 bg-surface-1/60 p-6 backdrop-blur-sm"
+      className="scroll-mt-6 rounded-2xl border border-border/60 bg-surface-1/60 p-6 backdrop-blur-sm"
     >
       <div className="mb-2 flex items-center gap-2">
         <People size={16} color="currentColor" variant="Linear" className="text-primary" />

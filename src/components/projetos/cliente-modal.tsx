@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Building2, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import { Add, Buildings2 } from "iconsax-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -7,6 +8,7 @@ import {
   DialogContent,
   DialogFooter,
   DialogHeader,
+  DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -51,30 +53,45 @@ export function ClienteModal({
 
   return (
     <Dialog open={open} onOpenChange={(value) => !value && onClose()}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 font-display">
-            <Building2 className="size-5 text-primary" /> Novo cliente
-          </DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4">
-          <div className="rounded-xl border border-primary/20 bg-primary/[0.05] p-3 text-[11px] leading-5 text-muted-foreground">
-            O cliente será o workspace principal. Dentro dele você criará projetos, fluxos,
-            entregas e o acesso ao Makers Members.
+      <DialogContent className="kb-form-dialog max-w-[560px] gap-0 overflow-hidden p-0">
+        <DialogHeader className="kb-form-header border-b border-white/[.07] px-5 py-5 pr-14 sm:px-6">
+          <div className="flex items-start gap-3.5">
+            <span className="kb-form-icon grid size-11 shrink-0 place-items-center rounded-xl">
+              <Buildings2 size={22} color="currentColor" variant="Bulk" />
+            </span>
+            <div className="min-w-0">
+              <DialogTitle className="font-display text-2xl font-bold tracking-[-.025em]">
+                Novo cliente
+              </DialogTitle>
+              <DialogDescription className="mt-1 text-sm leading-relaxed">
+                Crie o workspace que reunirá projetos, equipe e entregas deste cliente.
+              </DialogDescription>
+            </div>
           </div>
-          <label className="space-y-1.5">
-            <Label>Nome do cliente</Label>
+        </DialogHeader>
+        <div className="space-y-4 px-5 py-5 sm:px-6">
+          <section className="kb-form-section space-y-2 p-4">
+            <Label className="kb-form-label">Nome do cliente</Label>
             <Input
+              className="kb-form-control"
               value={name}
               onChange={(event) => setName(event.target.value)}
               placeholder="Ex.: Aurora Café"
               autoFocus
               onKeyDown={(event) => event.key === "Enter" && void save()}
             />
-          </label>
-          <div className="space-y-2">
-            <Label>Cor de identificação</Label>
-            <div className="flex flex-wrap gap-2 rounded-xl border border-border/60 bg-surface-1/30 p-3">
+            <p className="text-xs leading-relaxed text-[var(--kb-text-muted)]">
+              Use o nome pelo qual sua equipe reconhece o cliente no dia a dia.
+            </p>
+          </section>
+          <section className="kb-form-section space-y-3 p-4">
+            <div>
+              <Label className="kb-form-label">Identidade do cliente</Label>
+              <p className="mt-1 text-xs leading-relaxed text-[var(--kb-text-muted)]">
+                Essa cor identifica o cliente nos projetos, filtros e indicadores.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2.5 rounded-xl border border-white/[.07] bg-black/10 p-3">
               {CORES_PROJETO.map((item) => (
                 <button
                   key={item}
@@ -82,22 +99,31 @@ export function ClienteModal({
                   aria-label={`Selecionar ${item}`}
                   onClick={() => setColor(item)}
                   style={{ backgroundColor: item }}
-                  className={`size-7 rounded-full transition ${
+                  className={`size-8 rounded-full transition-[transform,opacity,box-shadow] ${
                     color === item
-                      ? "scale-110 ring-2 ring-white ring-offset-2 ring-offset-background"
-                      : "opacity-60 hover:opacity-100"
+                      ? "scale-105 ring-2 ring-white ring-offset-2 ring-offset-[oklch(0.18_0.008_260)]"
+                      : "opacity-65 hover:scale-105 hover:opacity-100"
                   }`}
                 />
               ))}
+              <div className="ml-auto flex min-w-0 items-center gap-2 text-xs text-[var(--kb-text-muted)]">
+                <span className="size-2.5 rounded-full" style={{ backgroundColor: color }} />
+                <span className="font-mono">{color}</span>
+              </div>
             </div>
-          </div>
+          </section>
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
+        <DialogFooter className="kb-form-footer flex-row justify-end gap-2 border-t border-white/[.07] px-5 py-4 sm:px-6">
+          <Button variant="outline" className="h-11 rounded-xl px-4" onClick={onClose}>
             Cancelar
           </Button>
-          <Button onClick={save} disabled={!name.trim() || saving}>
+          <Button
+            className="h-11 rounded-xl px-5 font-bold"
+            onClick={save}
+            disabled={!name.trim() || saving}
+          >
             {saving && <Loader2 className="size-4 animate-spin" />}
+            {!saving && <Add size={18} color="currentColor" variant="Linear" />}
             Criar cliente
           </Button>
         </DialogFooter>
@@ -105,4 +131,3 @@ export function ClienteModal({
     </Dialog>
   );
 }
-
