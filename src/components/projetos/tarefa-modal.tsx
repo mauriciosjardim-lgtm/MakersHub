@@ -7,6 +7,14 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -29,9 +37,11 @@ import {
 import { projetosActions } from "@/lib/hooks/useProjetos";
 import { ResponsavelSelect } from "@/components/projetos/membros-select";
 import { useAuth } from "@/lib/auth";
-import { Export, Link2, TaskSquare, Trash } from "iconsax-react";
+import { DocumentText1, Export, Link2, Maximize, TaskSquare, Trash } from "iconsax-react";
 import { DateTimePicker } from "@/components/ui/date-time-picker";
 import { linkSeguro } from "@/lib/projetos/progresso";
+import { juntarConteudoTarefa, separarConteudoTarefa } from "@/lib/projetos/tarefa-conteudo";
+import { cn } from "@/lib/utils";
 
 const toLocalInput = (iso: string) => {
   const d = new Date(iso);
@@ -58,6 +68,7 @@ export function TarefaModal({
   const { usuario } = useAuth();
   const [titulo, setTitulo] = useState("");
   const [descricao, setDescricao] = useState("");
+  const [anotacoes, setAnotacoes] = useState("");
   const [responsavel, setResponsavel] = useState("");
   const [prazo, setPrazo] = useState("");
   const [prazoFim, setPrazoFim] = useState("");
@@ -67,13 +78,17 @@ export function TarefaModal({
   const [link, setLink] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [removendo, setRemovendo] = useState(false);
+  const [cadernoAberto, setCadernoAberto] = useState(false);
   const linkAcessivel = linkSeguro(link);
 
   useEffect(() => {
     if (!open) return;
+    setCadernoAberto(false);
     if (tarefa) {
+      const conteudo = separarConteudoTarefa(tarefa.descricao);
       setTitulo(tarefa.titulo);
-      setDescricao(tarefa.descricao ?? "");
+      setDescricao(conteudo.descricao);
+      setAnotacoes(conteudo.anotacoes);
       setResponsavel(tarefa.responsavel);
       const inicio = tarefa.prazo ? new Date(tarefa.prazo) : null;
       const fimPadrao = inicio ? new Date(inicio.getTime() + 60 * 60 * 1000) : null;
@@ -95,6 +110,7 @@ export function TarefaModal({
       amanha.setHours(10, 0, 0, 0);
       setTitulo("");
       setDescricao("");
+      setAnotacoes("");
       setResponsavel(usuario?.nome ?? "");
       setPrazo(toLocalInput(amanha.toISOString()));
       amanha.setHours(18, 0, 0, 0);
@@ -115,7 +131,7 @@ export function TarefaModal({
     const payload = {
       projetoId,
       titulo: titulo.trim(),
-      descricao: descricao.trim() || undefined,
+      descricao: juntarConteudoTarefa({ descricao, anotacoes }) || undefined,
       responsavel: responsavel.trim() || "Você",
       prazo: inicioAgenda?.toISOString(),
       prazoFim: fimAgenda?.toISOString(),
@@ -147,10 +163,15 @@ export function TarefaModal({
     }
   };
 
+  const fecharModal = () => {
+    setCadernoAberto(false);
+    onClose();
+  };
+
   return (
-    <Dialog open={open} onOpenChange={(v) => !v && !salvando && !removendo && onClose()}>
-      <DialogContent className="kb-form-dialog max-w-[660px] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0">
-        <DialogHeader className="kb-form-header border-b border-white/[.07] px-5 py-4 pr-14">
+    <Dialog open={open} onOpenChange={(v) => !v && !salvando && !removendo && fecharModal()}>
+      <DialogContent className="kb-form-dialog max-w-[660px] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 !overflow-hidden p-0">
+        <DialogHeader className="kb-form-header relative z-10 border-b border-white/[.07] px-5 py-4 pr-14">
           <div className="flex items-start gap-3">
             <span className="kb-form-icon grid size-10 shrink-0 place-items-center rounded-xl">
               <TaskSquare size={20} color="currentColor" variant="Bulk" />
@@ -167,7 +188,7 @@ export function TarefaModal({
             </div>
           </div>
         </DialogHeader>
-        <div className="kb-scrollbar space-y-3 overflow-y-auto px-4 py-4 sm:px-5">
+        <div className="kb-task-form-scroll kb-scrollbar relative z-0 min-h-0 space-y-3 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5">
           <section className="kb-form-section grid gap-3 p-4 sm:grid-cols-[1.05fr_.95fr]">
             <div className="space-y-2">
               <Label className="kb-form-label">O que precisa ser feito?</Label>
@@ -183,14 +204,34 @@ export function TarefaModal({
               </p>
             </div>
             <div className="space-y-2">
-              <Label className="kb-form-label">Descrição</Label>
-              <Textarea
-                className="kb-form-control min-h-16 resize-y"
-                rows={2}
-                value={descricao}
-                onChange={(e) => setDescricao(e.target.value)}
-                placeholder="Contexto, referências e critérios de conclusão…"
-              />
+              <Label className="kb-form-label">Anotações</Label>
+              <button
+                type="button"
+                onClick={() => setCadernoAberto(true)}
+                className="kb-task-notes-trigger group flex min-h-[88px] w-full items-start gap-3 rounded-xl p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary-ui)]"
+              >
+                <span className="kb-task-notes-trigger-icon grid size-9 shrink-0 place-items-center rounded-xl">
+                  <DocumentText1 size={18} color="currentColor" variant="Bulk" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[13px] font-bold text-[var(--kb-text)]">
+                    {anotacoes.trim() ? "Caderno da tarefa" : "Adicionar anotações"}
+                  </span>
+                  <span
+                    className={cn(
+                      "kb-task-notes-preview mt-1 block text-xs leading-relaxed",
+                      anotacoes.trim()
+                        ? "text-[var(--kb-text-muted)]"
+                        : "text-[var(--kb-text-faint)]",
+                    )}
+                  >
+                    {anotacoes.trim() || "Contexto, referências e critérios de conclusão…"}
+                  </span>
+                </span>
+                <span className="kb-task-notes-expand grid size-8 shrink-0 place-items-center rounded-lg">
+                  <Maximize size={15} color="currentColor" variant="Linear" />
+                </span>
+              </button>
             </div>
           </section>
 
@@ -300,7 +341,7 @@ export function TarefaModal({
             )}
           </section>
         </div>
-        <DialogFooter className="kb-form-footer flex-row items-center justify-between gap-2 border-t border-white/[.07] px-5 py-3 sm:justify-between">
+        <DialogFooter className="kb-form-footer relative z-10 flex-row items-center justify-between gap-2 border-t border-white/[.07] px-5 py-3 sm:justify-between">
           {editando ? (
             <Button
               variant="ghost"
@@ -319,7 +360,7 @@ export function TarefaModal({
             <Button
               variant="outline"
               className="h-10 rounded-xl px-4"
-              onClick={onClose}
+              onClick={fecharModal}
               disabled={salvando || removendo}
             >
               Cancelar
@@ -334,6 +375,90 @@ export function TarefaModal({
           </div>
         </DialogFooter>
       </DialogContent>
+
+      <Sheet open={cadernoAberto} onOpenChange={setCadernoAberto}>
+        <SheetContent
+          side="right"
+          className="kb-task-notes-sheet z-[90] flex !w-[min(720px,calc(100vw-.75rem))] !max-w-[720px] flex-col gap-0 overflow-hidden p-0"
+        >
+          <SheetHeader className="kb-task-notes-header border-b border-white/[.07] px-6 py-5 pr-16 text-left sm:px-8 sm:py-7">
+            <div className="flex items-start gap-3.5">
+              <span className="kb-form-icon grid size-11 shrink-0 place-items-center rounded-2xl">
+                <DocumentText1 size={22} color="currentColor" variant="Bulk" />
+              </span>
+              <div className="min-w-0">
+                <p className="mb-1 text-[10px] font-bold uppercase tracking-[.16em] text-[var(--primary-ink)]">
+                  Espaço de escrita
+                </p>
+                <SheetTitle className="font-display text-2xl font-bold tracking-[-.035em]">
+                  Caderno da tarefa
+                </SheetTitle>
+                <SheetDescription className="mt-1.5 max-w-lg text-sm leading-relaxed">
+                  Registre briefing, decisões, referências e tudo o que ajuda a concluir esta
+                  tarefa.
+                </SheetDescription>
+              </div>
+            </div>
+          </SheetHeader>
+
+          <div className="kb-task-notes-canvas relative flex min-h-0 flex-1 flex-col px-5 py-5 sm:px-8 sm:py-7">
+            <div className="kb-task-description-field mb-5 rounded-2xl p-4">
+              <div className="mb-2 flex items-center justify-between gap-4">
+                <Label
+                  htmlFor="task-description"
+                  className="text-xs font-bold text-[var(--kb-text)]"
+                >
+                  Descrição
+                </Label>
+                <span className="text-[11px] text-[var(--kb-text-faint)]">Aparece no card</span>
+              </div>
+              <Input
+                id="task-description"
+                value={descricao}
+                onChange={(event) => setDescricao(event.target.value)}
+                placeholder="Resumo curto para identificar a tarefa"
+                className="kb-form-control"
+              />
+            </div>
+            <div className="flex min-h-0 flex-1 flex-col">
+              <div className="mb-3 flex items-center justify-between gap-4">
+                <Label
+                  htmlFor="task-notes-editor"
+                  className="text-xs font-bold text-[var(--kb-text-muted)]"
+                >
+                  Anotações
+                </Label>
+                <span className="text-[11px] tabular-nums text-[var(--kb-text-faint)]">
+                  {anotacoes.length.toLocaleString("pt-BR")} caracteres
+                </span>
+              </div>
+              <Textarea
+                id="task-notes-editor"
+                autoFocus
+                value={anotacoes}
+                onChange={(event) => setAnotacoes(event.target.value)}
+                placeholder={
+                  "Comece a escrever…\n\nVocê pode registrar o contexto da tarefa, decisões tomadas, referências importantes e critérios de conclusão."
+                }
+                className="kb-task-notes-editor kb-scrollbar h-full min-h-[240px] w-full flex-1 resize-none border-0 bg-transparent p-0 text-[15px] leading-7 text-[var(--kb-text)] shadow-none outline-none placeholder:text-[var(--kb-text-faint)] focus-visible:ring-0"
+              />
+            </div>
+          </div>
+
+          <SheetFooter className="kb-task-notes-footer flex-row items-center justify-between gap-3 border-t border-white/[.07] px-5 py-4 sm:px-8">
+            <p className="max-w-sm text-xs leading-relaxed text-[var(--kb-text-muted)]">
+              Descrição e anotações são salvas juntas no mesmo campo da tarefa.
+            </p>
+            <Button
+              type="button"
+              className="h-10 shrink-0 rounded-xl px-5 font-bold"
+              onClick={() => setCadernoAberto(false)}
+            >
+              Voltar à tarefa
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
     </Dialog>
   );
 }

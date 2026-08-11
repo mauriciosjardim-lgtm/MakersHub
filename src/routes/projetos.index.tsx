@@ -1076,7 +1076,7 @@ function Semana({
 
   return (
     <div className="min-w-0">
-      <div className="flex items-center justify-between gap-3 border-b border-border/50 px-3 py-2 2xl:hidden">
+      <div className="flex items-center justify-between gap-3 border-b border-border/50 px-3 py-2">
         <p className="text-xs text-muted-foreground">
           Navegue horizontalmente para ver todos os dias
         </p>
@@ -1101,9 +1101,9 @@ function Semana({
       </div>
       <div
         ref={scrollRef}
-        className="max-w-full overflow-x-auto overscroll-x-contain [scrollbar-gutter:stable]"
+        className="kb-scrollbar max-w-full overflow-x-auto overscroll-x-contain [scrollbar-gutter:stable]"
       >
-        <div className="grid min-w-[1470px] grid-cols-7 gap-3 p-3">
+        <div className="grid min-w-[1785px] grid-cols-7 gap-3 p-3">
           {dias.map((d, dayIndex) => {
             const ts = tarefas.filter(
               (t) => ids.has(t.projetoId) && t.prazo && isSameDay(new Date(t.prazo), d),
@@ -1146,49 +1146,54 @@ function Semana({
                           } as React.CSSProperties
                         }
                         className={cn(
-                          "kb-glass-card relative w-full overflow-hidden rounded-xl p-4 text-left transition-[transform,border-color,background-color,opacity] duration-150 hover:-translate-y-px hover:border-[var(--projeto)]",
+                          "kb-glass-card group relative w-full overflow-hidden rounded-2xl p-3.5 text-left transition-[transform,border-color,background-color,opacity] duration-150 hover:-translate-y-px hover:border-[var(--projeto)]",
                           t.concluida && "opacity-55",
                         )}
                       >
-                        <span aria-hidden="true" className="kb-card-neon-dot" />
-                        <div className="flex items-center justify-between gap-2 pr-4">
-                          <p className="text-xs font-semibold tabular-nums text-muted-foreground">
-                            {format(new Date(t.prazo!), "HH:mm")}
-                          </p>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <span
+                              aria-hidden="true"
+                              className="h-[3px] w-7 shrink-0 rounded-full bg-[var(--kb-priority)] opacity-90"
+                            />
+                            <p className="text-[11px] font-semibold tabular-nums text-muted-foreground">
+                              {format(new Date(t.prazo!), "HH:mm")}
+                            </p>
+                          </div>
                           {t.concluida ? (
-                            <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase text-success">
-                              <TickCircle size={15} color="currentColor" variant="Bulk" />
+                            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-success/10 px-2 py-1 text-[10px] font-bold uppercase tracking-[.06em] text-success">
+                              <TickCircle size={13} color="currentColor" variant="Bulk" />
                               Feita
                             </span>
                           ) : atrasada ? (
-                            <span className="text-xs font-bold uppercase text-destructive">
+                            <span className="shrink-0 rounded-full bg-destructive/10 px-2 py-1 text-[10px] font-bold uppercase tracking-[.06em] text-destructive">
                               Atrasada
                             </span>
                           ) : null}
                         </div>
                         <p
                           className={cn(
-                            "mt-3 font-display text-[15px] font-bold leading-snug",
+                            "mt-2.5 line-clamp-2 font-display text-[15px] font-bold leading-[1.32] tracking-[-.012em]",
                             t.concluida &&
                               "text-muted-foreground line-through decoration-muted-foreground/70",
                           )}
                         >
                           {t.titulo}
                         </p>
-                        <div className="mt-3 flex flex-wrap gap-1.5">
-                          <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-2.5 py-1 text-xs text-muted-foreground">
-                            <span className="size-1.5 rounded-full bg-[var(--projeto)]" />
-                            {p.cliente}
+                        <div className="mt-2.5 flex min-w-0 items-center gap-2 text-[11px]">
+                          <span className="inline-flex min-w-0 items-center gap-1.5 text-muted-foreground">
+                            <span className="size-1.5 shrink-0 rounded-full bg-[var(--projeto)]" />
+                            <span className="truncate">{p.cliente}</span>
                           </span>
-                          <span
-                            className="rounded-full px-2.5 py-1 text-xs font-semibold"
-                            style={{ color: cor, backgroundColor: `${cor}14` }}
-                          >
+                          <span aria-hidden="true" className="text-white/15">
+                            /
+                          </span>
+                          <span className="min-w-0 truncate font-semibold" style={{ color: cor }}>
                             {resolverNomeFaseNoFluxo(p.fases, t.status)}
                           </span>
                         </div>
-                        <div className="mt-3 flex items-center gap-2.5 border-t border-white/[.06] pt-3 text-xs text-muted-foreground">
-                          <span className="grid size-7 place-items-center rounded-lg bg-white/[.045] text-xs font-bold text-foreground ring-1 ring-white/[.07]">
+                        <div className="mt-2.5 flex items-center gap-2 text-[11px] text-muted-foreground">
+                          <span className="grid size-6 shrink-0 place-items-center rounded-full bg-white/[.045] text-[10px] font-bold text-foreground ring-1 ring-white/[.07]">
                             {iniciais(t.responsavel)}
                           </span>
                           <span className="truncate">{t.responsavel}</span>

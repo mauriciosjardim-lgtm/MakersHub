@@ -69,6 +69,7 @@ import {
 } from "@/lib/mock/projetos";
 import { useProjetos, projetosActions } from "@/lib/hooks/useProjetos";
 import { calcularResumoProgresso, SAUDE_ESTILO, linkSeguro } from "@/lib/projetos/progresso";
+import { separarConteudoTarefa } from "@/lib/projetos/tarefa-conteudo";
 import {
   findProjectClient,
   normalizeClientName,
@@ -486,26 +487,25 @@ function ProjetoConteudo({
         </div>
 
         <TabsContent value="tarefas" className="mt-3">
-          <div className="grid items-stretch gap-4 min-[1180px]:grid-cols-[minmax(0,1fr)_292px]">
-            <section className="order-2 flex min-w-0 flex-col min-[1180px]:order-1">
-              <div className="mb-4 px-1">
-                <p className="text-sm leading-relaxed text-[var(--kb-text-muted)]">
-                  Arraste os cards entre as etapas ou clique para editar.
-                </p>
-              </div>
-              <KanbanTarefas
-                tarefas={minhasTarefas}
-                todasTarefas={tarefas}
-                projetos={projetos}
-                projetoId={projeto.id}
-                fases={projeto.fases ?? []}
-                onEditar={(t) => setTarefaModal({ open: true, tarefa: t })}
-                onNovaTarefa={(faseInicial) => setTarefaModal({ open: true, faseInicial })}
-                onSolicitarReplicacao={() => setConfirmarReplicacao(true)}
-              />
-            </section>
-            <PainelContexto projeto={projeto} tarefas={minhasTarefas} marcos={meusMarcos} />
-          </div>
+          <section className="flex min-w-0 flex-col">
+            <div className="mb-4 px-1">
+              <p className="text-sm leading-relaxed text-[var(--kb-text-muted)]">
+                Arraste os cards entre as etapas ou clique para editar.
+              </p>
+            </div>
+            <KanbanTarefas
+              tarefas={minhasTarefas}
+              todasTarefas={tarefas}
+              projetos={projetos}
+              projetoId={projeto.id}
+              fases={projeto.fases ?? []}
+              onEditar={(t) => setTarefaModal({ open: true, tarefa: t })}
+              onNovaTarefa={(faseInicial) => setTarefaModal({ open: true, faseInicial })}
+              onSolicitarReplicacao={() => setConfirmarReplicacao(true)}
+            />
+          </section>
+
+          <CockpitProjeto projeto={projeto} tarefas={minhasTarefas} marcos={meusMarcos} />
         </TabsContent>
 
         <TabsContent value="entregaveis" className="mt-3">
@@ -920,7 +920,7 @@ function DetalheProjetoItem({
   );
 }
 
-function PainelContexto({
+function CockpitProjeto({
   projeto,
   tarefas,
   marcos,
@@ -946,93 +946,128 @@ function PainelContexto({
         data: marco.data,
         detalhe: "Marco do projeto",
       })),
-  ]
-    .sort((a, b) => +new Date(a.data) - +new Date(b.data))
-    .slice(0, 3);
+  ].sort((a, b) => +new Date(a.data) - +new Date(b.data));
 
   const links = (projeto.links ?? [])
     .flatMap((link) => {
       const seguro = linkSeguro(link.url);
       return seguro ? [{ ...link, seguro }] : [];
     })
-    .slice(0, 3);
+    .slice(0, 4);
 
   return (
-    <aside className="kb-context-panel order-1 grid gap-3 md:grid-cols-2 min-[1180px]:order-2 min-[1180px]:flex min-[1180px]:h-full min-[1180px]:flex-col">
-      <section className="kb-glass-shell rounded-2xl p-4">
+    <section className="kb-project-cockpit mt-5 grid items-start gap-4 min-[1100px]:grid-cols-[minmax(300px,.78fr)_minmax(0,1.42fr)]">
+      <article className="kb-glass-shell rounded-2xl p-5 sm:p-6">
         <ResumoProgresso projeto={projeto} tarefas={tarefas} />
-      </section>
 
-      <section className="kb-glass-shell rounded-2xl p-4 min-[1180px]:flex-1">
+        <div className="my-5 h-px bg-white/[.07]" />
+
         <div className="flex items-center gap-3">
           <span className="kb-detail-icon grid size-10 shrink-0 place-items-center rounded-xl">
-            <Calendar size={20} color="currentColor" variant="Bulk" />
+            <Link2 size={20} color="currentColor" variant="Bulk" />
           </span>
-          <div className="min-w-0">
-            <h3 className="font-display text-base font-bold">Próximos passos</h3>
-            <p className="mt-0.5 text-xs text-[var(--kb-text-muted)]">O que pede atenção agora.</p>
+          <div>
+            <h3 className="font-display text-base font-bold">Acessos rápidos</h3>
+            <p className="mt-0.5 text-xs text-[var(--kb-text-muted)]">
+              Arquivos e referências do projeto.
+            </p>
           </div>
         </div>
 
-        <div className="mt-4 space-y-3">
-          {agenda.map((item, index) => (
-            <div key={item.id} className="relative border-l border-white/[.08] pl-4">
-              <span
-                className={cn(
-                  "absolute -left-[4.5px] top-1.5 size-2 rounded-full",
-                  index === 0
-                    ? "bg-[var(--primary-ui)] shadow-[0_0_12px_-2px_var(--primary)]"
-                    : "bg-[var(--kb-text-faint)]",
-                )}
-              />
-              <p className="text-xs font-semibold uppercase tracking-[.06em] text-[var(--kb-text-faint)]">
-                {format(new Date(item.data), "dd MMM · HH:mm", { locale: ptBR })}
-              </p>
-              <p className="mt-1 text-[13px] font-bold leading-snug text-[var(--kb-text)]">
-                {item.titulo}
-              </p>
-              <p className="mt-1 text-xs text-[var(--kb-text-muted)]">{item.detalhe}</p>
-            </div>
-          ))}
-          {!agenda.length && (
-            <p className="text-xs leading-relaxed text-[var(--kb-text-muted)]">
-              Nenhum prazo pendente.
-            </p>
+        <div
+          className={cn(
+            "mt-4",
+            links.length === 1 ? "flex justify-center" : "grid grid-cols-2 gap-x-3 gap-y-4",
           )}
-        </div>
-
-        <div className="my-4 h-px bg-white/[.07]" />
-
-        <div className="flex items-center gap-2.5">
-          <Link2
-            size={18}
-            color="currentColor"
-            variant="Bulk"
-            className="text-[var(--primary-ink)]"
-          />
-          <h3 className="font-display text-sm font-bold">Acessos rápidos</h3>
-        </div>
-        <div className="mt-3 space-y-1.5">
+        >
           {links.map((link) => (
             <a
               key={link.id}
               href={link.seguro.href}
               target="_blank"
               rel="noreferrer"
-              className="flex min-h-10 items-center justify-between gap-2 rounded-xl border border-white/[.07] bg-white/[.025] px-3 text-[13px] font-semibold text-[var(--kb-text-muted)] transition hover:border-[color:color-mix(in_oklch,var(--primary)_24%,transparent)] hover:bg-[var(--primary-soft)] hover:text-[var(--kb-text)]"
+              className="kb-quick-folder portal-overview-folder group flex min-h-32 w-full max-w-44 flex-col items-center justify-end rounded-xl px-2 py-3 text-center transition hover:bg-white/[.018] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary-ui)]"
             >
-              <span className="truncate">{link.label}</span>
-              <Export size={16} color="currentColor" variant="Linear" className="shrink-0" />
+              <span className="portal-folder origin-bottom scale-[.78]" aria-hidden="true">
+                <span />
+              </span>
+              <span className="mt-3 flex w-full min-w-0 items-start justify-center gap-1.5">
+                <span className="min-w-0">
+                  <span className="block truncate text-[13px] font-bold text-[var(--kb-text)]">
+                    {link.label}
+                  </span>
+                  <span className="mt-0.5 block truncate text-[10px] text-[var(--kb-text-faint)]">
+                    {link.seguro.dominio}
+                  </span>
+                </span>
+                <Export
+                  size={13}
+                  color="currentColor"
+                  variant="Linear"
+                  className="mt-0.5 shrink-0 text-[var(--kb-text-faint)] transition group-hover:text-[var(--primary-ink)]"
+                />
+              </span>
             </a>
           ))}
           {!links.length && (
-            <p className="rounded-xl border border-dashed border-white/[.08] px-3 py-4 text-xs leading-relaxed text-[var(--kb-text-muted)]">
-              Adicione links importantes em “Links e notas”.
+            <div className="kb-quick-folder-empty col-span-2 flex min-h-40 flex-col items-center justify-center text-center">
+              <span
+                className="kb-quick-folder portal-folder scale-[.78] opacity-45"
+                aria-hidden="true"
+              >
+                <span />
+              </span>
+              <span className="mt-4 text-[13px] font-bold text-[var(--kb-text-muted)]">
+                Nenhum link salvo
+              </span>
+              <span className="mt-1 max-w-52 text-[11px] leading-relaxed text-[var(--kb-text-faint)]">
+                Adicione arquivos e referências em “Links e notas”.
+              </span>
+            </div>
+          )}
+        </div>
+      </article>
+
+      <article className="kb-glass-shell rounded-2xl p-5 sm:p-6">
+        <header className="flex items-center gap-3">
+          <span className="kb-detail-icon grid size-11 shrink-0 place-items-center rounded-xl">
+            <Calendar size={21} color="currentColor" variant="Bulk" />
+          </span>
+          <div>
+            <h3 className="font-display text-lg font-bold tracking-[-.02em]">Próximos passos</h3>
+            <p className="mt-0.5 text-xs text-[var(--kb-text-muted)]">O que pede atenção agora.</p>
+          </div>
+        </header>
+        <div className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          {agenda.slice(0, 4).map((item, index) => (
+            <div key={item.id} className="kb-next-step relative min-h-24 rounded-xl p-3.5">
+              <span
+                className={cn(
+                  "absolute right-3 top-3 size-2 rounded-full",
+                  index === 0
+                    ? "bg-[var(--primary-ui)] shadow-[0_0_12px_-2px_var(--primary)]"
+                    : "bg-[var(--kb-text-faint)]",
+                )}
+              />
+              <p className="pr-4 text-[10px] font-bold uppercase tracking-[.07em] text-[var(--kb-text-faint)]">
+                {format(new Date(item.data), "dd MMM · HH:mm", { locale: ptBR })}
+              </p>
+              <p className="mt-2 line-clamp-2 text-[13px] font-bold leading-snug text-[var(--kb-text)]">
+                {item.titulo}
+              </p>
+              <p className="mt-1 truncate text-[11px] text-[var(--kb-text-muted)]">
+                {item.detalhe}
+              </p>
+            </div>
+          ))}
+          {!agenda.length && (
+            <p className="sm:col-span-2 xl:col-span-4 flex min-h-24 items-center justify-center rounded-xl border border-dashed border-white/[.08] text-xs text-[var(--kb-text-muted)]">
+              Crie tarefas com prazo para acompanhar os próximos passos aqui.
             </p>
           )}
         </div>
-      </section>
-    </aside>
+      </article>
+    </section>
   );
 }
 
@@ -1083,13 +1118,31 @@ function KanbanTarefas({
   } | null>(null);
   const [removendoFase, setRemovendoFase] = useState(false);
   const boardScrollRef = useRef<HTMLDivElement>(null);
+  const [boardScroll, setBoardScroll] = useState({ left: 0, max: 0 });
+
+  const sincronizarScrollBoard = useCallback(() => {
+    const board = boardScrollRef.current;
+    if (!board) return;
+    const max = Math.max(0, board.scrollWidth - board.clientWidth);
+    setBoardScroll({ left: Math.min(board.scrollLeft, max), max });
+  }, []);
 
   useEffect(() => {
     const resetScroll = window.setTimeout(() => {
       boardScrollRef.current?.scrollTo({ left: 0 });
+      sincronizarScrollBoard();
     }, 150);
-    return () => window.clearTimeout(resetScroll);
-  }, [projetoId]);
+    window.addEventListener("resize", sincronizarScrollBoard);
+    return () => {
+      window.clearTimeout(resetScroll);
+      window.removeEventListener("resize", sincronizarScrollBoard);
+    };
+  }, [projetoId, sincronizarScrollBoard]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(sincronizarScrollBoard);
+    return () => window.cancelAnimationFrame(frame);
+  }, [adicionando, fases.length, sincronizarScrollBoard]);
 
   const colunas = fases.map((fase) => ({
     raw: fase,
@@ -1202,9 +1255,46 @@ function KanbanTarefas({
       onDragCancel={() => setDraggingId(null)}
       onDragEnd={handleDragEnd}
     >
+      {boardScroll.max > 0 && (
+        <div
+          className="kb-board-scroll-control"
+          role="group"
+          aria-label="Navegação horizontal do kanban"
+        >
+          <button
+            type="button"
+            aria-label="Ver etapas anteriores"
+            disabled={boardScroll.left <= 1}
+            onClick={() => boardScrollRef.current?.scrollBy({ left: -292, behavior: "smooth" })}
+          >
+            <ArrowLeft2 size={17} color="currentColor" />
+          </button>
+          <input
+            type="range"
+            min={0}
+            max={boardScroll.max}
+            step={1}
+            value={Math.min(boardScroll.left, boardScroll.max)}
+            onChange={(event) =>
+              boardScrollRef.current?.scrollTo({ left: Number(event.currentTarget.value) })
+            }
+            aria-label="Posição horizontal das etapas"
+          />
+          <button
+            type="button"
+            aria-label="Ver próximas etapas"
+            disabled={boardScroll.left >= boardScroll.max - 1}
+            onClick={() => boardScrollRef.current?.scrollBy({ left: 292, behavior: "smooth" })}
+          >
+            <ArrowRight2 size={17} color="currentColor" />
+          </button>
+        </div>
+      )}
+
       <div
         ref={boardScrollRef}
-        className="kb-kanban-stage kb-scrollbar flex flex-1 snap-x snap-proximity gap-3 overflow-x-auto px-1 pb-3 pt-1"
+        onScroll={sincronizarScrollBoard}
+        className="kb-kanban-stage kb-board-scrollbar flex flex-1 snap-x snap-proximity gap-3 overflow-x-scroll px-1 pb-3 pt-1"
       >
         {colunas.map((coluna, idx) => {
           const items = tarefas.filter((tarefa) => faseParaId(tarefa.status) === coluna.id);
@@ -1444,7 +1534,7 @@ function KanbanColuna({
     <div
       ref={setNodeRef}
       className={cn(
-        "kb-glass-column group/column relative min-h-[460px] w-[280px] min-w-[280px] flex-shrink-0 snap-start rounded-2xl p-2.5 transition-[background-color,border-color] duration-150",
+        "kb-glass-column group/column relative flex h-full min-h-0 w-[280px] min-w-[280px] flex-shrink-0 snap-start flex-col rounded-2xl p-2.5 transition-[background-color,border-color] duration-150",
         isOver && "border-[var(--primary-ui)] bg-[var(--primary-soft)]",
       )}
     >
@@ -1499,7 +1589,7 @@ function KanbanColuna({
           </div>
         </details>
       </div>
-      <div className="min-h-[398px] space-y-2.5">
+      <div className="kb-column-scroll kb-scrollbar min-h-0 flex-1 space-y-2.5 overflow-y-auto pr-1">
         {count === 0 && (
           <p className="py-10 text-center text-[13px] text-[var(--kb-text-faint)]">
             Nada nesta etapa
@@ -1529,6 +1619,7 @@ function TarefaCard({
   isDragging?: boolean;
   overlay?: boolean;
 }) {
+  const conteudo = separarConteudoTarefa(tarefa.descricao);
   const { attributes, listeners, setNodeRef } = useDraggable({
     id: overlay ? `${tarefa.id}-overlay` : tarefa.id,
     disabled: overlay,
@@ -1542,13 +1633,6 @@ function TarefaCard({
       ? `Hoje · ${format(prazo, "HH:mm")}`
       : format(prazo, "dd MMM", { locale: ptBR })
     : null;
-  const prioridadeVisual =
-    {
-      baixa: "text-[var(--kb-text-faint)]",
-      media: "text-[var(--kb-text-muted)]",
-      alta: "text-[var(--sem-warn)]",
-      urgente: "text-[var(--sem-danger)]",
-    }[tarefa.prioridade] ?? "text-[var(--kb-text-muted)]";
   const prioridadeCor =
     {
       baixa: "oklch(0.68 0.025 250)",
@@ -1563,8 +1647,7 @@ function TarefaCard({
       {...(!overlay ? attributes : {})}
       style={{ "--kb-priority": prioridadeCor } as CSSProperties}
       className={cn(
-        "kb-glass-card group relative cursor-grab touch-none rounded-xl p-4 text-[var(--kb-text)] transition-[transform,border-color,background-color,opacity] duration-150 active:cursor-grabbing",
-        tarefa.prioridade === "urgente" && "border-[color:oklch(0.68_0.13_25/0.45)]",
+        "kb-glass-card group relative cursor-grab touch-none rounded-xl p-3.5 text-[var(--kb-text)] transition-[transform,border-color,background-color,opacity] duration-150 active:cursor-grabbing",
         isDragging && !overlay && "kb-is-dragging pointer-events-none opacity-35",
         overlay &&
           "kb-drag-overlay -rotate-[1.5deg] scale-[1.02] cursor-grabbing select-none shadow-[0_20px_40px_-18px_rgba(0,0,0,.8)] will-change-transform",
@@ -1572,7 +1655,19 @@ function TarefaCard({
         !isDragging && "hover:-translate-y-px hover:border-[var(--kb-border-strong)]",
       )}
     >
-      <span aria-hidden="true" className="kb-card-neon-dot" />
+      <div className="kb-card-priority-meta">
+        <span
+          role="img"
+          aria-label={`Prioridade ${prio.label}`}
+          title={`Prioridade ${prio.label}`}
+          className="kb-card-priority-bar"
+        />
+        {tarefa.prioridade === "urgente" && (
+          <span aria-hidden="true" className="kb-card-priority-label">
+            Urgente
+          </span>
+        )}
+      </div>
       <button
         type="button"
         onClick={onEditar}
@@ -1581,58 +1676,53 @@ function TarefaCard({
         aria-label={`Editar tarefa ${tarefa.titulo}`}
         className="absolute inset-0 z-0 cursor-pointer rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary-ui)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--kb-bg)]"
       />
-      <div className="pointer-events-none relative z-[1] flex items-center justify-between gap-2">
-        <span className={cn("text-xs font-bold uppercase tracking-[.08em]", prioridadeVisual)}>
-          {prio.label}
-        </span>
-        <button
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => {
-            event.stopPropagation();
-            projetosActions.atualizarTarefa(tarefa.id, { concluida: !tarefa.concluida });
-          }}
-          className="pointer-events-auto grid size-8 place-items-center rounded-lg text-[var(--kb-text-faint)] opacity-100 transition-opacity hover:bg-[var(--primary-soft)] hover:text-[var(--primary-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary-ui)] sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
-          title={tarefa.concluida ? "Marcar como pendente" : "Marcar como concluída"}
-        >
-          {tarefa.concluida ? (
-            <TickCircle size={19} color="currentColor" variant="Bulk" />
-          ) : (
-            <Circle className="size-[19px]" />
-          )}
-        </button>
-      </div>
+      <button
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => {
+          event.stopPropagation();
+          projetosActions.atualizarTarefa(tarefa.id, { concluida: !tarefa.concluida });
+        }}
+        className="absolute right-2.5 top-2.5 z-[2] grid size-7 place-items-center rounded-lg text-[var(--kb-text-faint)] opacity-100 transition-opacity hover:bg-[var(--primary-soft)] hover:text-[var(--primary-ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary-ui)] sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
+        title={tarefa.concluida ? "Marcar como pendente" : "Marcar como concluída"}
+      >
+        {tarefa.concluida ? (
+          <TickCircle size={17} color="currentColor" variant="Bulk" />
+        ) : (
+          <Circle className="size-[17px]" />
+        )}
+      </button>
 
-      <div className="pointer-events-none relative z-[1] mt-2.5 block w-full text-left">
+      <div className="pointer-events-none relative z-[1] block w-full pr-5 pt-4 text-left">
         <p
           className={cn(
-            "line-clamp-2 text-base font-bold leading-[1.3] tracking-[-.015em]",
+            "line-clamp-2 text-[15px] font-bold leading-[1.32] tracking-[-.012em]",
             tarefa.concluida && "text-[var(--kb-text-muted)] line-through",
           )}
         >
           {tarefa.titulo}
         </p>
-        {tarefa.descricao && (
-          <p className="mt-2 line-clamp-2 text-[13px] leading-[1.55] text-[var(--kb-text-muted)]">
-            {tarefa.descricao}
+        {conteudo.descricao && (
+          <p className="mt-1.5 line-clamp-2 text-xs leading-[1.5] text-[var(--kb-text-muted)]">
+            {conteudo.descricao}
           </p>
         )}
       </div>
 
-      <div className="pointer-events-none relative z-[1] mt-4 flex items-center gap-2.5">
-        <span className="grid size-7 shrink-0 place-items-center rounded-full bg-[var(--kb-card-hover)] text-xs font-bold text-[var(--kb-text-muted)]">
+      <div className="pointer-events-none relative z-[1] mt-3 flex items-center gap-2">
+        <span className="grid size-6 shrink-0 place-items-center rounded-full bg-[var(--kb-card-hover)] text-[10px] font-bold text-[var(--kb-text-muted)]">
           {iniciais(tarefa.responsavel)}
         </span>
-        <span className="min-w-0 flex-1 truncate text-[13px] text-[var(--kb-text-muted)]">
+        <span className="min-w-0 flex-1 truncate text-xs text-[var(--kb-text-muted)]">
           {tarefa.responsavel}
         </span>
         {prazoLabel && (
           <span
             className={cn(
-              "inline-flex items-center gap-1.5 whitespace-nowrap text-[13px] font-medium tabular-nums",
+              "inline-flex items-center gap-1 whitespace-nowrap text-xs font-medium tabular-nums",
               atrasada ? "text-[var(--sem-danger)]" : "text-[var(--kb-text-muted)]",
             )}
           >
-            <Calendar size={15} color="currentColor" variant="Bulk" /> {prazoLabel}
+            <Calendar size={14} color="currentColor" variant="Bulk" /> {prazoLabel}
           </span>
         )}
       </div>
@@ -1644,10 +1734,10 @@ function TarefaCard({
           rel="noopener noreferrer"
           onClick={(e) => e.stopPropagation()}
           onPointerDown={(e) => e.stopPropagation()}
-          className="pointer-events-auto relative z-[1] mt-2.5 inline-flex max-w-full items-center gap-1.5 rounded-md text-xs text-[var(--kb-text-faint)] transition-colors hover:text-[var(--kb-text-muted)]"
+          className="pointer-events-auto relative z-[1] mt-2 inline-flex max-w-full items-center gap-1.5 rounded-md text-[11px] text-[var(--kb-text-faint)] transition-colors hover:text-[var(--kb-text-muted)]"
           title={lk.href}
         >
-          <Link2 size={14} color="currentColor" variant="Bulk" className="shrink-0" />
+          <Link2 size={13} color="currentColor" variant="Bulk" className="shrink-0" />
           <span className="truncate">{lk.dominio}</span>
         </a>
       )}

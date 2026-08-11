@@ -190,7 +190,7 @@ export function ProjectRedesignAnnouncement({ userId }: { userId: string }) {
                 </p>
               </div>
               <span className="rounded-full border border-white/[.08] bg-white/[.035] px-2.5 py-1 text-[9px] font-semibold text-muted-foreground">
-                v0.8.14
+                v0.8.15
               </span>
             </div>
 
