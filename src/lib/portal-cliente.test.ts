@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { type PortalDeliverable, portalDeliverableAfterDecision } from "@/lib/portal-cliente";
+import {
+  DEFAULT_PORTAL_ACCENT_COLOR,
+  type PortalDeliverable,
+  portalAccentColor,
+  portalDeliverableAfterDecision,
+} from "@/lib/portal-cliente";
 
 const pendingReview: PortalDeliverable = {
   id: "review-1",
@@ -45,5 +50,17 @@ describe("portalDeliverableAfterDecision", () => {
       status: "ajustes",
       client_feedback: "Ajustar a trilha",
     });
+  });
+});
+
+describe("portalAccentColor", () => {
+  test("aplica a cor persistida para o cliente", () => {
+    expect(portalAccentColor("  #2563eb  ")).toBe("#2563eb");
+    expect(portalAccentColor("oklch(0.65 0.22 295)")).toBe("oklch(0.65 0.22 295)");
+  });
+
+  test("mantém a cor padrão quando nenhuma foi configurada", () => {
+    expect(portalAccentColor(null)).toBe(DEFAULT_PORTAL_ACCENT_COLOR);
+    expect(portalAccentColor("  ")).toBe(DEFAULT_PORTAL_ACCENT_COLOR);
   });
 });

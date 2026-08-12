@@ -46,6 +46,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   getPublicClientPortal,
+  portalAccentColor,
   portalCoverUrl,
   portalDeliverableAfterDecision,
   portalDisplayProgress,
@@ -379,7 +380,7 @@ function ClientPortalPage() {
     );
   }
 
-  const accent = "#90f826";
+  const accent = portalAccentColor(portal.company.accent_color);
   const title = VIEW_TITLES[view];
 
   return (

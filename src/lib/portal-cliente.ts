@@ -1,6 +1,11 @@
 import { portalSupabase } from "@/lib/portal-supabase";
 
 export const DEFAULT_PORTAL_COVER_URL = "/portal/aurora-project-cover-v4.jpg";
+export const DEFAULT_PORTAL_ACCENT_COLOR = "#90f826";
+
+export function portalAccentColor(accentColor?: string | null): string {
+  return accentColor?.trim() || DEFAULT_PORTAL_ACCENT_COLOR;
+}
 
 export function safePortalUrl(value?: string | null): string | null {
   const raw = value?.trim();
