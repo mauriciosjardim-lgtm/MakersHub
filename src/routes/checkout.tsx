@@ -31,6 +31,7 @@ import {
   trackMetaInitiateCheckout,
   trackMetaPurchaseBrowser,
 } from "@/lib/meta-pixel";
+import { carregarClarity, pausarClarity } from "@/lib/clarity";
 import { useAuth } from "@/lib/auth";
 import { Turnstile, type TurnstileInstance } from "@marsidev/react-turnstile";
 
@@ -257,6 +258,8 @@ function Checkout() {
 
   useEffect(() => {
     trackMetaInitiateCheckout();
+    carregarClarity();
+    return pausarClarity;
   }, []);
 
   function validarConta(): string | null {
