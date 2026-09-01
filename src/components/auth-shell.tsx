@@ -4,6 +4,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { Topbar } from "@/components/topbar";
 import { TrialExpirado } from "@/components/trial-expirado";
 import { SuporteWidget } from "@/components/suporte/suporte-widget";
+import { FoundingMembersAnnouncement } from "@/components/founding-members-announcement";
 
 interface AuthShellProps {
   trialExpirado: boolean;
@@ -21,15 +22,18 @@ export function AuthShell({ trialExpirado, sidebarStyle }: AuthShellProps) {
       {trialExpirado ? (
         <TrialExpirado />
       ) : (
-        <SidebarProvider defaultOpen={false} style={sidebarStyle} className="pt-2">
-          <AppSidebar />
-          <SidebarInset className="flex min-h-screen w-full flex-col">
-            <Topbar />
-            <main className="flex-1 overflow-x-hidden px-2 pb-3 sm:px-3 lg:px-4">
-              <Outlet />
-            </main>
-          </SidebarInset>
-        </SidebarProvider>
+        <>
+          <SidebarProvider defaultOpen={false} style={sidebarStyle} className="pt-2">
+            <AppSidebar />
+            <SidebarInset className="flex min-h-screen w-full flex-col">
+              <Topbar />
+              <main className="flex-1 overflow-x-hidden px-2 pb-3 sm:px-3 lg:px-4">
+                <Outlet />
+              </main>
+            </SidebarInset>
+          </SidebarProvider>
+          <FoundingMembersAnnouncement />
+        </>
       )}
       <SuporteWidget />
     </>

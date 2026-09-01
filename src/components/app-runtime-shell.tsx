@@ -5,7 +5,6 @@ import { applyBrandColor } from "@/lib/brandColor";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { MODULO_ROTA, temAcesso, type Permissoes } from "@/lib/permissoes";
 import { MakersHubUpdatedScreen } from "@/components/makershub-updated-screen";
-import { ProjectRedesignAnnouncement } from "@/components/project-redesign-announcement";
 
 const AuthShell = lazy(() =>
   import("@/components/auth-shell").then((m) => ({ default: m.AuthShell })),
@@ -138,7 +137,6 @@ function AppShell({ sessionHint }: { sessionHint: boolean }) {
     return (
       <Suspense fallback={Spinner}>
         <AuthShell trialExpirado={trialExpirado} sidebarStyle={sidebarStyle} />
-        <ProjectRedesignAnnouncement userId={usuario.id} />
       </Suspense>
     );
   }

@@ -48,7 +48,6 @@ import {
 } from "@/components/ui/dialog";
 import { ClienteModal } from "@/components/projetos/cliente-modal";
 import { CentralAtencao } from "@/components/projetos/central-atencao";
-import { NovidadesFluxoProjetos } from "@/components/projetos/novidades-fluxo-projetos";
 import {
   ProjetosErrorState,
   ProjetosLoadingState,
@@ -320,7 +319,6 @@ function ProjetosPage() {
 
   return (
     <div className="project-kanban-ambient space-y-5 px-4 py-5 md:px-8 md:py-7">
-      <NovidadesFluxoProjetos projetos={projetos} />
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div className="flex items-center gap-4">
           <span className="kb-nav-icon grid size-12 shrink-0 place-items-center rounded-2xl">
