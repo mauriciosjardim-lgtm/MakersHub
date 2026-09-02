@@ -44,8 +44,8 @@ begin
   update public.leads
      set valor       = coalesce(p_valor, valor),
          temperatura = coalesce(p_temperatura, temperatura),
-         origem      = coalesce(p_origem, origem),
-         responsavel = coalesce(p_responsavel, responsavel)
+         origem      = coalesce(nullif(btrim(p_origem), ''), origem),
+         responsavel = coalesce(nullif(btrim(p_responsavel), ''), responsavel)
    where id = p_lead_id and empresa_id = v_empresa
   returning contato_id into v_contato;
   get diagnostics v_ok = row_count;

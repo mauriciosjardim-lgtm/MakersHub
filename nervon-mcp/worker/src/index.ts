@@ -18,6 +18,8 @@
  * ============================================================================
  */
 
+import { textoOpcionalNaoVazio } from "./text";
+
 interface Env {
   SUPABASE_URL: string;
   SUPABASE_ANON_KEY: string;
@@ -326,8 +328,16 @@ const TOOLS = [
         lead_id: { type: "string", description: "ID do lead (obtido via listar_leads)" },
         valor: { type: "number", description: "Novo valor estimado em reais (opcional)" },
         temperatura: { type: "string", enum: ["frio", "morno", "quente"], description: "Nova temperatura (opcional)" },
-        origem: { type: "string", description: "Nova origem (opcional)" },
-        responsavel: { type: "string", description: "Novo responsável (opcional)" },
+        origem: {
+          type: "string",
+          minLength: 1,
+          description: "Nova origem (opcional)",
+        },
+        responsavel: {
+          type: "string",
+          minLength: 1,
+          description: "Novo responsável (opcional)",
+        },
         email: { type: "string", description: "E-mail do contato principal — preenche/atualiza (opcional)" },
         telefone: { type: "string", description: "Telefone do contato principal — preenche/atualiza (opcional)" },
       },
@@ -796,8 +806,8 @@ async function runTool(env: Env, tokenHash: string, name: string, args: Record<s
         p_lead_id: args.lead_id,
         p_valor: args.valor ?? null,
         p_temperatura: args.temperatura ?? null,
-        p_origem: args.origem ?? null,
-        p_responsavel: args.responsavel ?? null,
+        p_origem: textoOpcionalNaoVazio(args.origem),
+        p_responsavel: textoOpcionalNaoVazio(args.responsavel),
         p_email: args.email ?? null,
         p_telefone: args.telefone ?? null,
       });
