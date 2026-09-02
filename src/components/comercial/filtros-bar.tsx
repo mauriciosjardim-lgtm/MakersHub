@@ -10,6 +10,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { valoresUnicosNaoVazios } from "@/lib/comercial/campos";
 import {
   useComercial,
   useEtapasComercial,
@@ -71,10 +72,19 @@ export function FiltrosBar({
   const leads = useComercial((s) => s.leads);
   const empresas = useComercial((s) => s.empresas);
   const etapas = useEtapasComercial();
-  const responsaveis = useMemo(() => Array.from(new Set(leads.map((l) => l.responsavel))), [leads]);
-  const origens = useMemo(() => Array.from(new Set(leads.map((l) => l.origem))), [leads]);
-  const cidades = useMemo(() => Array.from(new Set(empresas.map((e) => e.cidade))), [empresas]);
-  const segmentos = useMemo(() => Array.from(new Set(empresas.map((e) => e.segmento))), [empresas]);
+  const responsaveis = useMemo(
+    () => valoresUnicosNaoVazios(leads.map((lead) => lead.responsavel)),
+    [leads],
+  );
+  const origens = useMemo(() => valoresUnicosNaoVazios(leads.map((lead) => lead.origem)), [leads]);
+  const cidades = useMemo(
+    () => valoresUnicosNaoVazios(empresas.map((empresa) => empresa.cidade)),
+    [empresas],
+  );
+  const segmentos = useMemo(
+    () => valoresUnicosNaoVazios(empresas.map((empresa) => empresa.segmento)),
+    [empresas],
+  );
 
   const sujo = JSON.stringify(value) !== JSON.stringify(filtroInicial);
 

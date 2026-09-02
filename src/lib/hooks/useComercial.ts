@@ -27,6 +27,11 @@ import {
   normalizarLabelsEtapas,
   type LabelsEtapasComercial,
 } from "@/lib/comercial/etapas";
+import {
+  normalizarCampoComercial,
+  textoOpcionalNaoVazio,
+  valoresUnicosNaoVazios,
+} from "@/lib/comercial/campos";
 
 type EmpresaRow = Database["public"]["Tables"]["clientes_comercial"]["Row"];
 type EmpresaUpdate = Database["public"]["Tables"]["clientes_comercial"]["Update"];
@@ -92,8 +97,8 @@ function rowToEmpresa(r: EmpresaRow): Empresa {
   return {
     id: r.id,
     nome: r.nome,
-    segmento: r.segmento,
-    cidade: r.cidade,
+    segmento: normalizarCampoComercial(r.segmento),
+    cidade: normalizarCampoComercial(r.cidade),
     site: r.site ?? undefined,
     instagram: r.instagram ?? undefined,
     observacoes: r.observacoes ?? undefined,
@@ -135,9 +140,9 @@ function rowToLead(r: LeadRow): Lead {
     contatoId: r.contato_id,
     etapa: r.etapa as EtapaJornada,
     valor: Number(r.valor),
-    responsavel: r.responsavel,
+    responsavel: normalizarCampoComercial(r.responsavel),
     temperatura: r.temperatura as Temperatura,
-    origem: r.origem,
+    origem: normalizarCampoComercial(r.origem),
     proximaAcao: rowToProximaAcao(r.proxima_acao),
     observacoes: r.observacoes ?? undefined,
     criadoEm: r.criado_em,
@@ -423,9 +428,9 @@ export const getTimelineDoLead = (leadId: string) =>
 export const getTarefasDoLead = (leadId: string) =>
   store.tarefas.filter((t) => t.leadId === leadId).sort((a, b) => a.prazo.localeCompare(b.prazo));
 export const getOrigensUnicas = () =>
-  Array.from(new Set(store.leads.map((l) => l.origem).filter(Boolean)));
+  valoresUnicosNaoVazios(store.leads.map((lead) => lead.origem));
 export const getResponsaveisUnicos = () =>
-  Array.from(new Set(store.leads.map((l) => l.responsavel).filter(Boolean)));
+  valoresUnicosNaoVazios(store.leads.map((lead) => lead.responsavel));
 export const getLabelEtapa = (etapa: EtapaJornada) =>
   store.etapasLabels[etapa] ?? labelEtapa(etapa);
 
@@ -543,31 +548,53 @@ export const comercial = {
     leadId: string,
     patch: Partial<Pick<Lead, "valor" | "responsavel" | "origem" | "temperatura">>,
   ) {
+    const patchNormalizado = { ...patch };
+    if (patch.responsavel !== undefined) {
+      patchNormalizado.responsavel = normalizarCampoComercial(patch.responsavel);
+    }
+    if (patch.origem !== undefined) {
+      patchNormalizado.origem = normalizarCampoComercial(patch.origem);
+    }
     const payload: LeadUpdate = {};
-    if (patch.valor !== undefined) payload.valor = patch.valor;
-    if (patch.responsavel !== undefined) payload.responsavel = patch.responsavel;
-    if (patch.origem !== undefined) payload.origem = patch.origem;
-    if (patch.temperatura !== undefined) payload.temperatura = patch.temperatura;
+    if (patchNormalizado.valor !== undefined) payload.valor = patchNormalizado.valor;
+    if (patchNormalizado.responsavel !== undefined) {
+      payload.responsavel = patchNormalizado.responsavel;
+    }
+    if (patchNormalizado.origem !== undefined) payload.origem = patchNormalizado.origem;
+    if (patchNormalizado.temperatura !== undefined) {
+      payload.temperatura = patchNormalizado.temperatura;
+    }
     const { error } = await supabase.from("leads").update(payload).eq("id", leadId);
     if (dbErro(error, "atualizar lead")) return false;
-    atualizarLeadNasColecoes(leadId, (lead) => ({ ...lead, ...patch }));
+    atualizarLeadNasColecoes(leadId, (lead) => ({ ...lead, ...patchNormalizado }));
     return true;
   },
 
   async updateEmpresa(empresaId: string, patch: Partial<Omit<Empresa, "id">>) {
+    const patchNormalizado = { ...patch };
+    if (patch.segmento !== undefined) {
+      patchNormalizado.segmento = normalizarCampoComercial(patch.segmento);
+    }
+    if (patch.cidade !== undefined) {
+      patchNormalizado.cidade = normalizarCampoComercial(patch.cidade);
+    }
     const payload: EmpresaUpdate = {};
-    if (patch.nome !== undefined) payload.nome = patch.nome;
-    if (patch.segmento !== undefined) payload.segmento = patch.segmento;
-    if (patch.cidade !== undefined) payload.cidade = patch.cidade;
-    if (patch.site !== undefined) payload.site = patch.site;
-    if (patch.instagram !== undefined) payload.instagram = patch.instagram;
-    if (patch.observacoes !== undefined) payload.observacoes = patch.observacoes;
-    if (patch.accentColor !== undefined) payload.accent_color = patch.accentColor;
-    if (patch.arquivado !== undefined) payload.arquivado = patch.arquivado;
+    if (patchNormalizado.nome !== undefined) payload.nome = patchNormalizado.nome;
+    if (patchNormalizado.segmento !== undefined) payload.segmento = patchNormalizado.segmento;
+    if (patchNormalizado.cidade !== undefined) payload.cidade = patchNormalizado.cidade;
+    if (patchNormalizado.site !== undefined) payload.site = patchNormalizado.site;
+    if (patchNormalizado.instagram !== undefined) payload.instagram = patchNormalizado.instagram;
+    if (patchNormalizado.observacoes !== undefined) {
+      payload.observacoes = patchNormalizado.observacoes;
+    }
+    if (patchNormalizado.accentColor !== undefined) {
+      payload.accent_color = patchNormalizado.accentColor;
+    }
+    if (patchNormalizado.arquivado !== undefined) payload.arquivado = patchNormalizado.arquivado;
     const { error } = await supabase.from("clientes_comercial").update(payload).eq("id", empresaId);
     if (dbErro(error, "atualizar empresa")) return false;
     setStore({
-      empresas: store.empresas.map((e) => (e.id === empresaId ? { ...e, ...patch } : e)),
+      empresas: store.empresas.map((e) => (e.id === empresaId ? { ...e, ...patchNormalizado } : e)),
     });
     return true;
   },
@@ -773,11 +800,11 @@ export const comercial = {
       p_contato_email: input.contatoEmail || null,
       p_contato_telefone: input.contatoTelefone || null,
       p_valor: input.valor,
-      p_responsavel: input.responsavel,
+      p_responsavel: normalizarCampoComercial(input.responsavel, "Você"),
       p_temperatura: input.temperatura,
-      p_origem: input.origem,
-      p_cidade: input.cidade || null,
-      p_segmento: input.segmento || null,
+      p_origem: normalizarCampoComercial(input.origem),
+      p_cidade: textoOpcionalNaoVazio(input.cidade),
+      p_segmento: textoOpcionalNaoVazio(input.segmento),
     });
     if (dbErro(error, "criar lead") || !data?.lead_id) return null;
     await refresh();
