@@ -9,6 +9,8 @@ import {
   equal,
   fromLocal,
   fromRemote,
+  dateInZone,
+  midnight,
   supported,
   syncValueSchema,
   toLocal,
@@ -58,7 +60,9 @@ export class SyncRepository implements SyncStore {
   async settings() {
     const { data, error } = await this.db
       .from("google_calendar_sync_settings")
-      .select("user_id,empresa_id,calendar_id,calendar_name,time_zone,last_synced_at")
+      .select(
+        "user_id,empresa_id,calendar_id,calendar_name,time_zone,last_synced_at,sync_from,configuration_version",
+      )
       .eq("user_id", this.owner.userId)
       .eq("empresa_id", this.owner.empresaId)
       .maybeSingle();
@@ -155,11 +159,33 @@ export class CalendarSync {
   }
   async configure(calendarId: string) {
     const calendar = await this.api.calendar(calendarId);
-    await this.store.write("configure", {
-      calendar_id: calendar.id,
-      calendar_name: calendar.summary,
-      time_zone: calendar.timeZone,
-    });
+    if (!calendar.primary) throw new CalendarError("calendar_access_denied", 403);
+    const syncFrom = midnight(
+      dateInZone(new Date().toISOString(), calendar.timeZone),
+      calendar.timeZone,
+    );
+    const previous = await this.store.settings();
+    const switching = Boolean(
+      previous && (previous.calendar_id !== calendar.id || previous.configuration_version < 2),
+    );
+    if (switching) await this.store.write("claim");
+    try {
+      await this.store.write("configure", {
+        calendar_id: calendar.id,
+        calendar_name: calendar.summary,
+        time_zone: calendar.timeZone,
+        sync_from: syncFrom,
+        configuration_version: 2,
+      });
+    } finally {
+      if (switching) await this.store.write("release", { complete: false }).catch(() => undefined);
+    }
+    const events = await this.store.events();
+    await this.enroll(
+      events
+        .filter((event) => !event.ref_tipo && Date.parse(event.fim) >= Date.parse(syncFrom))
+        .map((event) => event.id),
+    );
   }
   async enroll(eventIds: string[]) {
     const s = await this.store.settings();
@@ -183,7 +209,7 @@ export class CalendarSync {
         throw new CalendarError("calendar_timezone_changed", 409);
       // Finish ALL pages before performing any writes. Missing pages never imply deletion.
       const [remote, links, events] = await Promise.all([
-        this.api.list(s.calendar_id),
+        this.api.list(s.calendar_id, s.sync_from),
         this.store.links(),
         this.store.events(),
       ]);
@@ -212,8 +238,13 @@ export class CalendarSync {
           report.skipped++;
           continue;
         }
-        const google = googleEvent ? fromRemote(googleEvent) : null;
-        let decision = decide(link.base, local, google, link.pending);
+        const managed = googleEvent?.extendedProperties?.private?.makershubLink === link.id;
+        const google = googleEvent ? fromRemote(googleEvent, !managed) : null;
+        const privateImport = googleEvent?.visibility === "private" && !managed;
+        let decision =
+          privateImport && !equal(local, google)
+            ? "pull"
+            : decide(link.base, local, google, link.pending);
         if (decision === "conflict") {
           const fingerprint = await sha256(
             JSON.stringify([
@@ -264,7 +295,8 @@ export class CalendarSync {
               link.id,
               google ? googleEvent : null,
             );
-            if (!equal(fromRemote(saved), local)) throw new CalendarError("event_changed", 409);
+            if (!equal(fromRemote(saved, false), local))
+              throw new CalendarError("event_changed", 409);
           } else if (googleEvent && google) await this.api.remove(s.calendar_id, googleEvent);
           await this.store.write("ack", { id: link.id, base: local });
           report.pushed++;

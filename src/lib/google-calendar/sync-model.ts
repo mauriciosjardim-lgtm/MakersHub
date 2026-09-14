@@ -35,6 +35,7 @@ export type RemoteEvent = {
   recurringEventId?: string;
   eventType?: string;
   locked?: boolean;
+  visibility?: "default" | "public" | "private" | "confidential";
   extendedProperties?: { private?: Record<string, string> };
 };
 export type SyncLink = {
@@ -55,6 +56,8 @@ export type SyncSettings = {
   calendar_name: string;
   time_zone: string;
   last_synced_at: string | null;
+  sync_from: string;
+  configuration_version: number;
 };
 export type Decision = "none" | "ack" | "push" | "pull" | "conflict";
 export function equal(a: SyncValue | null, b: SyncValue | null) {
@@ -140,14 +143,9 @@ export function fromLocal(e: LocalEvent, zone: string): SyncValue {
   });
 }
 export function supported(e: RemoteEvent) {
-  return (
-    !e.recurrence?.length &&
-    !e.recurringEventId &&
-    !e.locked &&
-    (!e.eventType || e.eventType === "default")
-  );
+  return !e.recurrence?.length && !e.locked && (!e.eventType || e.eventType === "default");
 }
-export function fromRemote(e: RemoteEvent): SyncValue | null {
+export function fromRemote(e: RemoteEvent, redactPrivate = true): SyncValue | null {
   if (e.status === "cancelled") return null;
   if (!supported(e)) throw new CalendarError("unsupported_event");
   const allDay = !!e.start?.date;
@@ -156,9 +154,9 @@ export function fromRemote(e: RemoteEvent): SyncValue | null {
     end = allDay ? e.end!.date : e.end?.dateTime;
   if (!start || !end) throw new CalendarError("invalid_event");
   return validate({
-    title: e.summary ?? "(Sem título)",
-    description: e.description ?? "",
-    location: e.location ?? "",
+    title: redactPrivate && e.visibility === "private" ? "Ocupado" : (e.summary ?? "(Sem título)"),
+    description: redactPrivate && e.visibility === "private" ? "" : (e.description ?? ""),
+    location: redactPrivate && e.visibility === "private" ? "" : (e.location ?? ""),
     allDay,
     start: allDay ? start : new Date(start).toISOString(),
     end: allDay ? end : new Date(end).toISOString(),

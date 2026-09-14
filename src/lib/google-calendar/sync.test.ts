@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { CalendarSync, eventId, type SyncStore } from "./sync.server";
-import { EventsApi, isTestCalendar } from "./events.server";
+import { EventsApi, isOwnedCalendar } from "./events.server";
 import { CalendarError } from "./protocol";
 import {
   decide,
@@ -30,6 +30,8 @@ const settings: SyncSettings = {
   calendar_name: "MAKERShub - Testes",
   time_zone: "America/Sao_Paulo",
   last_synced_at: null,
+  sync_from: "2026-09-14T03:00:00.000Z",
+  configuration_version: 2,
 };
 function local(v = value): LocalEvent {
   return {
@@ -59,12 +61,13 @@ function link(base: SyncValue | null = value): SyncLink {
 class Store implements SyncStore {
   rows: LocalEvent[] = [local()];
   maps: SyncLink[] = [link()];
+  config: SyncSettings | null = structuredClone(settings);
   actions: string[] = [];
   locked = false;
   failAck = false;
   deny = false;
   async settings() {
-    return settings;
+    return structuredClone(this.config);
   }
   async links() {
     return structuredClone(this.maps);
@@ -82,6 +85,37 @@ class Store implements SyncStore {
     }
     if (action === "release") {
       this.locked = false;
+      return;
+    }
+    if (action === "configure") {
+      const calendarId = String(d.calendar_id);
+      if (
+        this.config &&
+        (this.config.calendar_id !== calendarId || this.config.configuration_version < 2)
+      )
+        this.maps = [];
+      this.config = {
+        user_id: "u",
+        empresa_id: "tenant",
+        calendar_id: calendarId,
+        calendar_name: String(d.calendar_name),
+        time_zone: String(d.time_zone),
+        last_synced_at: null,
+        sync_from: String(d.sync_from),
+        configuration_version: Number(d.configuration_version),
+      };
+      return;
+    }
+    if (action === "enroll") {
+      const localId = String(d.local_event_id);
+      if (!this.maps.some((map) => map.local_event_id === localId))
+        this.maps.push({
+          ...link(null),
+          id: String(d.id),
+          calendar_id: this.config!.calendar_id,
+          local_event_id: localId,
+          google_event_id: String(d.google_event_id),
+        });
       return;
     }
     const l = this.maps.find((l) => l.id === d.id);
@@ -137,12 +171,13 @@ function harness(store = new Store()) {
     const url = new URL(String(input));
     const method = init?.method ?? "GET";
     expect(init?.redirect).toBe("manual");
-    if (url.pathname.includes("calendarList"))
+    if (url.pathname.includes("calendarList/"))
       return Response.json({
-        id: "test",
-        summary: settings.calendar_name,
+        id: decodeURIComponent(url.pathname.split("/").at(-1)!),
+        summary: "Agenda principal",
         accessRole: "owner",
         timeZone: settings.time_zone,
+        primary: true,
       });
     const id = decodeURIComponent(url.pathname.split("/").at(-1)!);
     if (id === "events" && method === "GET")
@@ -240,11 +275,62 @@ describe("three-way calendar reconciliation", () => {
       "unsupported_event",
     );
   });
-  test("only owned dedicated secondary calendars qualify", () => {
+  test("only owned calendars qualify", () => {
     const c = { id: "x", summary: settings.calendar_name, accessRole: "owner", timeZone: "UTC" };
-    expect(isTestCalendar(c)).toBe(true);
-    expect(isTestCalendar({ ...c, primary: true })).toBe(false);
-    expect(isTestCalendar({ ...c, accessRole: "reader" })).toBe(false);
+    expect(isOwnedCalendar(c)).toBe(true);
+    expect(isOwnedCalendar({ ...c, primary: true })).toBe(true);
+    expect(isOwnedCalendar({ ...c, accessRole: "reader" })).toBe(false);
+  });
+  test("private Google events hide their details", () => {
+    expect(
+      fromRemote({
+        ...remote({ ...value, description: "Segredo", location: "Sala" }),
+        visibility: "private",
+      }),
+    ).toEqual({ ...value, title: "Ocupado", description: "", location: "" });
+  });
+  test("managed private events retain MAKERShub details", () => {
+    expect(
+      fromRemote(
+        {
+          ...remote({ ...value, description: "Detalhes", location: "Sala" }),
+          visibility: "private",
+        },
+        false,
+      ),
+    ).toEqual({ ...value, description: "Detalhes", location: "Sala" });
+  });
+  test("private Google imports remain redacted when changed locally", async () => {
+    const h = harness();
+    h.store.maps[0].base = { ...value, title: "Ocupado" };
+    h.store.rows[0].titulo = "Tentativa de edição";
+    h.events.set("remote", {
+      ...remote({ ...value, title: "Assunto secreto", description: "Segredo", location: "Sala" }),
+      visibility: "private",
+    });
+    expect((await h.sync.run()).pulled).toBe(1);
+    expect(h.store.rows[0].titulo).toBe("Ocupado");
+    expect(h.store.rows[0].descricao).toBe("");
+    expect(h.writes).toHaveLength(0);
+    expect(h.events.get("remote")?.summary).toBe("Assunto secreto");
+  });
+  test("migrates the legacy configuration and enrolls only unfinished local events", async () => {
+    const h = harness();
+    h.store.config = { ...settings, configuration_version: 1 };
+    h.store.rows = [
+      { ...local(), id: "future", fim: "2099-09-15T13:00:00.000Z" },
+      {
+        ...local(),
+        id: "past",
+        inicio: "2000-01-01T12:00:00.000Z",
+        fim: "2000-01-01T13:00:00.000Z",
+      },
+    ];
+    await h.sync.configure("primary");
+    expect(h.store.config?.calendar_id).toBe("primary");
+    expect(h.store.config?.configuration_version).toBe(2);
+    expect(h.store.maps.map((map) => map.local_event_id)).toEqual(["future"]);
+    expect(h.store.actions.slice(0, 3)).toEqual(["claim", "configure", "release"]);
   });
   test("deterministic provider IDs are tenant scoped and valid", async () => {
     const a = await eventId("tenant-a:event");
@@ -371,14 +457,36 @@ test("Google pagination completes before returning a snapshot", async () => {
   const api = new EventsApi(async () => "fake", (async (input: RequestInfo | URL) => {
     const url = new URL(String(input));
     pages.push(url.searchParams.get("pageToken") ?? "first");
+    expect(url.searchParams.get("timeMin")).toBe(settings.sync_from);
+    expect(url.searchParams.get("singleEvents")).toBe("true");
     return Response.json(
       pages.length === 1
         ? { items: [remote()], nextPageToken: "next" }
         : { items: [remote(value, "second")] },
     );
   }) as typeof fetch);
-  expect(await api.list("test")).toHaveLength(2);
+  expect(await api.list("test", settings.sync_from)).toHaveLength(2);
   expect(pages).toEqual(["first", "next"]);
+});
+test("Google calendars are limited to owners and place the primary calendar first", async () => {
+  const api = new EventsApi(async () => "fake", (async (input: RequestInfo | URL) => {
+    const url = new URL(String(input));
+    expect(url.searchParams.get("minAccessRole")).toBe("owner");
+    return Response.json({
+      items: [
+        { id: "secondary", summary: "Secundária", accessRole: "owner", timeZone: "UTC" },
+        {
+          id: "primary",
+          summary: "Principal",
+          accessRole: "owner",
+          timeZone: "America/Sao_Paulo",
+          primary: true,
+        },
+        { id: "reader", summary: "Leitura", accessRole: "reader", timeZone: "UTC" },
+      ],
+    });
+  }) as typeof fetch);
+  expect((await api.calendars()).map((calendar) => calendar.id)).toEqual(["primary", "secondary"]);
 });
 test("page two failure rejects the entire Google snapshot", async () => {
   let calls = 0;
@@ -386,7 +494,7 @@ test("page two failure rejects the entire Google snapshot", async () => {
     ++calls === 1
       ? Response.json({ items: [remote()], nextPageToken: "next" })
       : new Response(null, { status: 429 })) as typeof fetch);
-  await expect(api.list("test")).rejects.toThrow("google_retry_later");
+  await expect(api.list("test", settings.sync_from)).rejects.toThrow("google_retry_later");
 });
 test("concurrent local update is not overwritten by an import", async () => {
   const h = harness();

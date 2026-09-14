@@ -9,9 +9,13 @@ begin
  select empresa_id,generation into t,gen from public.google_calendar_connections where user_id=u and status='connected';
  select id into sess from auth.sessions where user_id=u and (not_after is null or not_after>now()) limit 1;
  if t is null or sess is null then raise exception 'An active pilot connection/session is required'; end if;
- if exists(select 1 from public.google_calendar_sync_settings where user_id=u) then raise exception 'Run before configuring the pilot calendar'; end if;
- perform public.google_calendar_sync_write(u,t,sess,gen,lock_id,'configure','{"calendar_id":"synthetic-fixture","calendar_name":"MAKERShub - Testes","time_zone":"America/Sao_Paulo"}');
- perform public.google_calendar_sync_write(u,t,sess,gen,lock_id,'claim');
+ if exists(select 1 from public.google_calendar_sync_settings where user_id=u) then
+  perform public.google_calendar_sync_write(u,t,sess,gen,lock_id,'claim');
+  perform public.google_calendar_sync_write(u,t,sess,gen,lock_id,'configure','{"calendar_id":"synthetic-fixture","calendar_name":"Fixture principal","time_zone":"America/Sao_Paulo","sync_from":"2026-09-14T03:00:00Z","configuration_version":2}');
+ else
+  perform public.google_calendar_sync_write(u,t,sess,gen,lock_id,'configure','{"calendar_id":"synthetic-fixture","calendar_name":"Fixture principal","time_zone":"America/Sao_Paulo","sync_from":"2026-09-14T03:00:00Z","configuration_version":2}');
+  perform public.google_calendar_sync_write(u,t,sess,gen,lock_id,'claim');
+ end if;
  caught:=false;
  begin perform public.google_calendar_sync_write(u,t,sess,gen,gen_random_uuid(),'claim'); exception when others then caught:=sqlerrm='sync_in_progress'; end;
  if not caught then raise exception 'Concurrent lease allowed'; end if;
