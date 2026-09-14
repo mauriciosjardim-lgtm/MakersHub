@@ -78,26 +78,37 @@ Google identity is not used as a separate MakersHub sign-in method by this integ
 
 ## Reviewer access instructions
 
-Provide Google with a dedicated MakersHub reviewer account that can reach `/agenda`.
-The account must be enabled for the integration before submission. Never send a real
-customer password. Include these steps with the credentials through the verification
-channel requested by Google:
+The integration requires the Google Account selected during OAuth to have the same
+email as the authenticated MakersHub account. Use Google's preferred reviewer-email
+flow so this check remains active during review:
+
+1. Submit the verification request with the demo video and navigation instructions.
+2. When the verification team sends its reviewer email address, create a dedicated
+   MakersHub account with that exact email, a temporary password and access to Agenda.
+   Disable two-factor authentication for this temporary account.
+3. Append its Supabase UUID to the comma-separated
+   `GOOGLE_CALENDAR_ALLOWED_USER_IDS` Worker variable and deploy through the normal
+   release process.
+4. Reply to the verification email confirming that the reviewer address is enabled and
+   provide the login URL and temporary password through that private channel.
+
+Never send a real customer password. Include these navigation steps in the submission
+and in the reply to the verification team:
 
 1. Open `https://makershub.app.br/login` and sign in with the reviewer account.
 2. Open `https://makershub.app.br/agenda`.
 3. Select **Conectar agenda**, read the contextual data-use notice, and select
    **Continuar com Google**.
-4. Choose the supplied Google reviewer account and grant the requested permissions.
+4. Choose the same Google reviewer account and grant the requested permissions.
 5. Return to Agenda and select **Atualizar**.
 6. Create an event in MakersHub and update to show it in the primary Google Calendar.
 7. Create or edit an event in Google Calendar and update to show it in MakersHub.
 8. Open **Configurações → Integrações** and show the connected account, privacy-policy
    link, and the disconnect/revocation control.
 
-Before Google starts its test, append the reviewer's Supabase UUID to the comma-separated
-`GOOGLE_CALENDAR_ALLOWED_USER_IDS` Worker variable and deploy through the normal release
-process. Remove temporary reviewer access after the review closes. After approval, set
-the variable to `*` to open the integration to every eligible MakersHub user.
+After the review closes, disconnect the temporary integration, remove the reviewer UUID
+from the Worker variable and disable the temporary MakersHub account. After approval,
+set the variable to `*` to open the integration to every eligible MakersHub user.
 
 ## Demonstration video script
 
@@ -134,16 +145,19 @@ or customer information.
    contacts, and replace `calendar.events` with `calendar.events.owned`.
 4. Disconnect and reconnect the pilot account so its stored grant contains the exact
    submitted scope set; repeat the two-way production test.
-5. Create the reviewer account and record the demonstration video.
+5. Record the demonstration video with the pilot account.
 6. Change the External app from Testing to In production, select **Prepare for
    verification**, enter the scope justifications and video URL, then submit.
-7. Do not change the app name, logo, domains, client URLs, or scopes while review is in
+7. When Google sends the reviewer email address, provision and allowlist its matching
+   MakersHub account using the instructions above.
+8. Do not change the app name, logo, domains, client URLs, or scopes while review is in
    progress. Reply promptly to messages from `api-oauth-support@google.com`.
 
 ## Official references
 
 - [Verification requirements](https://support.google.com/cloud/answer/13464321)
 - [Submit an app for verification](https://support.google.com/cloud/answer/13461325)
+- [Provide in-app testing access](https://support.google.com/cloud/answer/13807382)
 - [Google Calendar scopes](https://developers.google.com/workspace/calendar/api/auth)
 - [Google API Services User Data Policy](https://developers.google.com/terms/api-services-user-data-policy)
 - [OAuth production policy compliance](https://developers.google.com/identity/protocols/oauth2/production-readiness/policy-compliance)
