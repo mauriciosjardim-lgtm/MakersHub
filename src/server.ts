@@ -100,7 +100,8 @@ function withSecurityHeaders(response: Response, isHttps: boolean): Response {
   const headers = new Headers(response.headers);
   headers.set("X-Content-Type-Options", "nosniff");
   headers.set("X-Frame-Options", "DENY");
-  headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  if (!headers.has("Referrer-Policy"))
+    headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
   // Primeiro em observação: permite inventariar violações reais sem interromper
   // login, fontes, previews do Drive/Vimeo/YouTube ou propostas existentes.
@@ -144,6 +145,11 @@ export default {
         }),
         isHttps,
       );
+    }
+
+    if (url.pathname.startsWith("/api/integrations/google-calendar/")) {
+      const { handleGoogleCalendar } = await import("./lib/google-calendar/http.server");
+      return withSecurityHeaders(await handleGoogleCalendar(request), isHttps);
     }
 
     if (url.pathname === "/api/asaas/webhook" && request.method === "POST") {

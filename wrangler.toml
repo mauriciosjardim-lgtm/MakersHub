@@ -28,5 +28,8 @@ directory = "./dist/client"
 # correct Supabase project"). O antigo, emivrhkmwqofylsedyxa, foi abandonado em
 # junho/2026 e não deve voltar a aparecer em lugar nenhum.
 [vars]
+GOOGLE_CALENDAR_ENABLED = "false"
+GOOGLE_CALENDAR_CLIENT_ID = "890288732678-ej2mellqsjuglc22omi41rimop2kt7dr.apps.googleusercontent.com"
+GOOGLE_CALENDAR_REDIRECT_URI = "https://makershub.app.br/api/integrations/google-calendar/callback"
 SUPABASE_URL = "https://smsqhbbbyjacatxvihks.supabase.co"
 SUPABASE_PUBLISHABLE_KEY = "sb_publishable_Kcsq5BKG5RWrv7S9RuoD1w_0b6MS6CU"
