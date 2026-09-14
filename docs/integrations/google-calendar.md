@@ -2,9 +2,10 @@
 
 ## Implemented and verified
 
-The OAuth connection stage is implemented on `codex/google-calendar-test-user`.
-The application code has not been deployed. Event synchronization is not implemented.
-The server flag remains `GOOGLE_CALENDAR_ENABLED=false`.
+The OAuth connection stage was deployed in v0.8.19 through PR #20, initially disabled.
+This configuration enables the existing server-side pilot for the fixed verified
+identity below. Event synchronization is not implemented.
+Set `GOOGLE_CALENDAR_ENABLED=false` to pause new integration operations.
 
 Only the verified Supabase identity belonging to `mauriciosjardim@gmail.com` can
 participate. Authorization uses its fixed UUID, not a client-provided email, admin
@@ -70,7 +71,7 @@ policies to silence it. See the [advisor explanation](https://supabase.com/docs/
    encryption key securely; replacing it makes existing ciphertext unreadable.
 3. Follow `docs/quality/release-readiness.md`: green PR, merge, version/tag and
    deployment of the exact published main commit through `bun run deploy`.
-   Deploy with the flag disabled first.
+   The first disabled deployment was completed in v0.8.19.
 4. Enable the pilot and sign in as `mauriciosjardim@gmail.com`. Connect the same
    Google account, check persisted status after reload, reject consent and reconnect,
    disconnect/revoke, and verify a second MAKERShub account has no access.
