@@ -385,8 +385,9 @@ describe("Google token endpoint contract", () => {
   test("default transport preserves the native Workers fetch receiver", async () => {
     const original = globalThis.fetch;
     const calls: string[] = [];
-    globalThis.fetch = async function (this: unknown, url: RequestInfo | URL) {
+    globalThis.fetch = async function (this: unknown, url: RequestInfo | URL, init?: RequestInit) {
       if (this !== globalThis) throw new TypeError("Illegal invocation");
+      if (init?.redirect !== "manual") throw new TypeError("Unsupported redirect mode");
       calls.push(String(url));
       if (String(url).endsWith("/token"))
         return Response.json({
@@ -433,7 +434,7 @@ describe("Google token endpoint contract", () => {
     const body = calls[0].init?.body as URLSearchParams;
     expect(body.get("grant_type")).toBe("refresh_token");
     expect(body.get("client_secret")).toBe(config.clientSecret);
-    expect(calls[0].init?.redirect).toBe("error");
+    expect(calls[0].init?.redirect).toBe("manual");
   });
   test("wrong Google account is revoked and never accepted", async () => {
     const calls: string[] = [];
@@ -455,6 +456,21 @@ describe("Google token endpoint contract", () => {
       new GoogleCalendarProvider(config, http).exchange("code", "verifier", owner.email),
     ).rejects.toThrow("wrong_google_account");
     expect(calls.at(-1)).toBe("https://oauth2.googleapis.com/revoke");
+  });
+  test("redirect responses are rejected without following credential-bearing requests", async () => {
+    let calls = 0;
+    const http = (async (_url, init) => {
+      calls += 1;
+      expect(init?.redirect).toBe("manual");
+      return new Response(null, {
+        status: 302,
+        headers: { location: "https://unexpected.example/token" },
+      });
+    }) as typeof fetch;
+    const provider = new GoogleCalendarProvider(config, http);
+    await expect(provider.refresh(bundle())).rejects.toThrow("google_unavailable");
+    await expect(provider.revoke("fake-token")).rejects.toThrow("revocation_pending");
+    expect(calls).toBe(2);
   });
   test("provider errors do not leak their response body", async () => {
     const http = (async () =>
