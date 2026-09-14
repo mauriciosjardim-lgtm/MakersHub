@@ -28,7 +28,8 @@ export function authorizationUrl(config: CalendarConfig, state: string, challeng
 export class GoogleCalendarProvider {
   constructor(
     private config: CalendarConfig,
-    private http: typeof fetch = fetch,
+    // Workers requires the native fetch receiver to be globalThis, not this provider.
+    private http: typeof fetch = fetch.bind(globalThis),
   ) {}
 
   private async tokens(params: Record<string, string>) {
@@ -43,7 +44,7 @@ export class GoogleCalendarProvider {
           ...params,
         }),
         signal: AbortSignal.timeout(15000),
-        redirect: "error",
+        redirect: "manual",
       });
     } catch {
       throw new CalendarError("google_unavailable", 503);
@@ -77,7 +78,7 @@ export class GoogleCalendarProvider {
       const response = await this.http("https://openidconnect.googleapis.com/v1/userinfo", {
         headers: { Authorization: `Bearer ${result.access_token}` },
         signal: AbortSignal.timeout(15000),
-        redirect: "error",
+        redirect: "manual",
       });
       const identity = z
         .object({
@@ -132,7 +133,7 @@ export class GoogleCalendarProvider {
         headers: { "content-type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({ token }),
         signal: AbortSignal.timeout(15000),
-        redirect: "error",
+        redirect: "manual",
       });
     } catch {
       throw new CalendarError("revocation_pending", 503);
