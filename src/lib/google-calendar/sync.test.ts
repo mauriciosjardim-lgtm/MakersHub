@@ -188,6 +188,14 @@ function harness(store = new Store()) {
   };
 }
 describe("three-way calendar reconciliation", () => {
+  test("enrollment remains available while a synchronization lease is active", async () => {
+    const h = harness();
+    h.store.maps = [];
+    h.store.locked = true;
+    await h.sync.enroll(["local", "local"]);
+    expect(h.store.actions).toEqual(["enroll"]);
+  });
+
   test("JSONB key order does not change equality", () => {
     expect(
       equal(value, {

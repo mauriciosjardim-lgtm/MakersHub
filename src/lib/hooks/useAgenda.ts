@@ -83,14 +83,15 @@ registerSessionDisposer(resetAgendaStore);
 async function enrollCreatedEvent(eventId: string) {
   const { data } = await supabase.auth.getSession();
   if (data.session?.user.id !== GOOGLE_CALENDAR_PILOT_USER_ID) return;
-  await fetch("/api/integrations/google-calendar/sync/enroll", {
+  const response = await fetch("/api/integrations/google-calendar/sync/enroll", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${data.session.access_token}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ eventIds: [eventId] }),
-  }).catch(() => undefined);
+  });
+  if (!response.ok) throw new Error("google_calendar_enroll_failed");
 }
 
 // ─── hook ────────────────────────────────────────────────────────────────────
@@ -136,7 +137,13 @@ export const agendaActions = {
     if (data) {
       eventos = [...eventos, rowToEvento(data)].sort((a, b) => a.inicio.localeCompare(b.inicio));
       emit();
-      if (!input.refTipo) await enrollCreatedEvent(data.id);
+      if (!input.refTipo) {
+        try {
+          await enrollCreatedEvent(data.id);
+        } catch (error) {
+          console.warn("Não foi possível incluir o evento na sincronização do Google.", error);
+        }
+      }
     }
     return data;
   },

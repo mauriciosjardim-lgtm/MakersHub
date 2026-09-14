@@ -162,19 +162,14 @@ export class CalendarSync {
     });
   }
   async enroll(eventIds: string[]) {
-    await this.store.write("claim");
-    try {
-      const s = await this.store.settings();
-      if (!s) throw new CalendarError("calendar_required", 409);
-      for (const id of new Set(eventIds))
-        await this.store.write("enroll", {
-          id: crypto.randomUUID(),
-          local_event_id: id,
-          google_event_id: await eventId(`${this.namespace}:${s.calendar_id}:${id}`),
-        });
-    } finally {
-      await this.store.write("release", { complete: false }).catch(() => undefined);
-    }
+    const s = await this.store.settings();
+    if (!s) throw new CalendarError("calendar_required", 409);
+    for (const id of new Set(eventIds))
+      await this.store.write("enroll", {
+        id: crypto.randomUUID(),
+        local_event_id: id,
+        google_event_id: await eventId(`${this.namespace}:${s.calendar_id}:${id}`),
+      });
   }
   async run(resolution?: z.infer<typeof resolutionSchema>): Promise<SyncReport> {
     await this.store.write("claim");
