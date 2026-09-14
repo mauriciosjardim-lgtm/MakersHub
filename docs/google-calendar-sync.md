@@ -1,12 +1,12 @@
 # Google Calendar: bidirectional pilot
 
-The existing verified-user feature flag still gates every endpoint. The pilot chooses an owned, non-primary Google calendar named `MAKERShub - Testes`. It imports supported events from that calendar into the user's company agenda. Local manual events are enrolled explicitly; project/task-generated events are excluded. The UI explains company visibility before activation.
+The existing verified-user feature flag still gates every endpoint. The pilot chooses an owned, non-primary Google calendar named `MAKERShub - Testes`. It imports supported events from that calendar into the user's company agenda. New manual events created by the pilot user are enrolled automatically; project/task-generated events and older local events are excluded.
 
 ## Behavior
 
-Title, description, location, start/end, all-day status and deletions synchronize both ways. Google attendees, invitations, attachments, reminders and recurrence rules are not mapped. Recurring, locked and special Google events are skipped and counted in the UI. All-day dates use the selected calendar time zone and Google's exclusive end date. The current local event editor remains a date/time editor; preserve all-day boundaries when editing an imported all-day event.
+Title, description, location, start/end, all-day status and deletions synchronize both ways. Google attendees, invitations, attachments, reminders and recurrence rules are not mapped. Recurring, locked and special Google events are skipped. All-day dates use the selected calendar time zone and Google's exclusive end date. The current local event editor remains a date/time editor; preserve all-day boundaries when editing an imported all-day event.
 
-Sync runs every 60 seconds while the Agenda page is visible, plus a manual button. This is not background synchronization when the page is closed. Newly created local events must be enrolled through “Escolher eventos do MAKERShub para enviar”. Disconnect/flag shutdown stops subsequent operations and preserves mappings and events for reconnect.
+Sync runs every 60 seconds while the Agenda page is visible, plus the compact `Atualizar` button. This is not background synchronization when the page is closed. The interface otherwise shows only `Conectar agenda`, with short errors and conflict choices when action is required. Disconnect/flag shutdown stops subsequent operations and preserves mappings and events for reconnect.
 
 ## Consistency and access
 

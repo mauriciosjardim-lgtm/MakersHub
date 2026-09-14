@@ -4,6 +4,7 @@ import type { Database } from "@/lib/database.types";
 import { getEmpresaId } from "@/lib/empresaId";
 import { dbErro } from "@/lib/dbError";
 import { registerSessionDisposer } from "@/lib/sessionScope";
+import { GOOGLE_CALENDAR_PILOT_USER_ID } from "@/lib/google-calendar/access-policy";
 import type { TipoEvento, RefTipo, Evento } from "@/lib/mock/agenda";
 
 type EventRow = {
@@ -79,6 +80,19 @@ export function resetAgendaStore() {
 }
 registerSessionDisposer(resetAgendaStore);
 
+async function enrollCreatedEvent(eventId: string) {
+  const { data } = await supabase.auth.getSession();
+  if (data.session?.user.id !== GOOGLE_CALENDAR_PILOT_USER_ID) return;
+  await fetch("/api/integrations/google-calendar/sync/enroll", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${data.session.access_token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ eventIds: [eventId] }),
+  }).catch(() => undefined);
+}
+
 // ─── hook ────────────────────────────────────────────────────────────────────
 
 export function useAgendaSupa() {
@@ -122,6 +136,7 @@ export const agendaActions = {
     if (data) {
       eventos = [...eventos, rowToEvento(data)].sort((a, b) => a.inicio.localeCompare(b.inicio));
       emit();
+      if (!input.refTipo) await enrollCreatedEvent(data.id);
     }
     return data;
   },
