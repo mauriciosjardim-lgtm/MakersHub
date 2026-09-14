@@ -73,14 +73,14 @@ export function EventoModal({ open, onClose, evento, dataInicial }: Props) {
   }, [open, evento, dataInicial]);
 
   const salvar = () => {
-    if (!titulo.trim() || !inicio || !fim) return;
+    if (!titulo.trim() || !inicio || !fim || new Date(fim) <= new Date(inicio)) return;
     const payload = {
       titulo: titulo.trim(),
       tipo,
       inicio: new Date(inicio).toISOString(),
       fim: new Date(fim).toISOString(),
-      local: local.trim() || undefined,
-      descricao: descricao.trim() || undefined,
+      local: local.trim(),
+      descricao: descricao.trim(),
       participantes: participantes
         .split(",")
         .map((p) => p.trim())

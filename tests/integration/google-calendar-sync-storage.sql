@@ -1,0 +1,45 @@
+-- Run against an authorized pilot database. Synthetic events/config only, rolled back.
+begin;
+do $$
+declare u uuid := 'c88dae71-5946-4e75-a3db-c0dd26fe0dd1'; t uuid; sess uuid; gen uuid;
+ lock_id uuid := gen_random_uuid(); event_id uuid := gen_random_uuid(); link_id uuid := gen_random_uuid();
+ rev bigint; caught boolean; base jsonb := '{"title":"Sync fixture","description":"","location":"","allDay":false,"start":"2026-09-15T12:00:00.000Z","end":"2026-09-15T13:00:00.000Z"}';
+ payload jsonb;
+begin
+ select empresa_id,generation into t,gen from public.google_calendar_connections where user_id=u and status='connected';
+ select id into sess from auth.sessions where user_id=u and (not_after is null or not_after>now()) limit 1;
+ if t is null or sess is null then raise exception 'An active pilot connection/session is required'; end if;
+ if exists(select 1 from public.google_calendar_sync_settings where user_id=u) then raise exception 'Run before configuring the pilot calendar'; end if;
+ perform public.google_calendar_sync_write(u,t,sess,gen,lock_id,'configure','{"calendar_id":"synthetic-fixture","calendar_name":"MAKERShub - Testes","time_zone":"America/Sao_Paulo"}');
+ perform public.google_calendar_sync_write(u,t,sess,gen,lock_id,'claim');
+ caught:=false;
+ begin perform public.google_calendar_sync_write(u,t,sess,gen,gen_random_uuid(),'claim'); exception when others then caught:=sqlerrm='sync_in_progress'; end;
+ if not caught then raise exception 'Concurrent lease allowed'; end if;
+ insert into public.eventos(id,empresa_id,titulo,inicio,fim,tipo) values(event_id,t,'Sync fixture','2026-09-15T12:00Z','2026-09-15T13:00Z','outro');
+ perform public.google_calendar_sync_write(u,t,sess,gen,lock_id,'enroll',jsonb_build_object('id',link_id,'local_event_id',event_id,'google_event_id','synthetic-event'));
+ update public.eventos set calendar_revision=999,titulo='Concurrent edit' where id=event_id;
+ select calendar_revision into rev from public.eventos where id=event_id;
+ if rev<>2 then raise exception 'Revision must be server controlled'; end if;
+ payload:=jsonb_build_object('id',link_id,'revision',1,'event',null,'base',null);
+ caught:=false;
+ begin perform public.google_calendar_sync_write(u,t,sess,gen,lock_id,'apply',payload); exception when others then caught:=sqlerrm='event_changed'; end;
+ if not caught or not exists(select 1 from public.eventos where id=event_id) then raise exception 'Concurrent edit lost'; end if;
+ caught:=false;
+ begin perform public.google_calendar_sync_write(u,t,gen_random_uuid(),gen,lock_id,'ack',jsonb_build_object('id',link_id,'base',base)); exception when others then caught:=sqlerrm='access_denied'; end;
+ if not caught then raise exception 'Invalid session allowed'; end if;
+ caught:=false;
+ begin perform public.google_calendar_sync_write(u,gen_random_uuid(),sess,gen,lock_id,'ack',jsonb_build_object('id',link_id,'base',base)); exception when others then caught:=sqlerrm='access_denied'; end;
+ if not caught then raise exception 'Tenant isolation failed'; end if;
+ caught:=false;
+ begin perform public.google_calendar_sync_write(u,t,sess,gen_random_uuid(),lock_id,'ack',jsonb_build_object('id',link_id,'base',base)); exception when others then caught:=sqlerrm='access_denied'; end;
+ if not caught then raise exception 'Stale connection allowed'; end if;
+ perform public.google_calendar_sync_write(u,t,sess,gen,lock_id,'apply',payload||jsonb_build_object('revision',2));
+ if exists(select 1 from public.eventos where id=event_id) or not (select deleted from public.google_calendar_event_links where id=link_id) then raise exception 'Atomic delete failed'; end if;
+ payload:=jsonb_build_object('id',gen_random_uuid(),'local_event_id',gen_random_uuid(),'google_event_id','import-fixture','base',base,'event',jsonb_build_object('titulo','Sync fixture','descricao','','local','','inicio','2026-09-15T12:00Z','fim','2026-09-15T13:00Z','dia_todo',false));
+ perform public.google_calendar_sync_write(u,t,sess,gen,lock_id,'import',payload);
+ perform public.google_calendar_sync_write(u,t,sess,gen,lock_id,'import',payload);
+ if (select count(*) from public.google_calendar_event_links where user_id=u and google_event_id='import-fixture')<>1 then raise exception 'Duplicate import'; end if;
+ perform public.google_calendar_sync_write(u,t,sess,gen,lock_id,'release','{"complete":true}');
+end $$;
+rollback;
+select 'PASS: lease, revision CAS, tenant/session/generation isolation, atomic delete and idempotent import; fixtures rolled back' as result;

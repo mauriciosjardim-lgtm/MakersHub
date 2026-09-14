@@ -4,10 +4,11 @@ import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { GoogleCalendarIcon } from "@/components/icons/google-calendar";
 
+import { GoogleCalendarSync } from "./google-calendar-sync";
+
 type Status = { enabled: boolean; configured: boolean; status: string; email: string | null };
 const messages: Record<string, string> = {
-  connected:
-    "Google Agenda conectada. A sincronização de eventos será habilitada em uma próxima etapa.",
+  connected: "Google Agenda conectada. Configure a sincronização abaixo.",
   consent_denied: "Conexão cancelada no Google.",
   wrong_google_account: "Use a mesma conta Google do seu usuário de teste.",
   permissions_missing: "Autorize as permissões solicitadas para concluir a conexão.",
@@ -115,6 +116,9 @@ export function GoogleCalendarConnection() {
         >
           <GoogleCalendarIcon className="size-4" /> Conectar Google Agenda
         </Button>
+      )}
+      {status.enabled && status.status === "connected" && currentUserId && (
+        <GoogleCalendarSync key={currentUserId} userId={currentUserId} />
       )}
       {message && (
         <p role="status" className="w-full text-muted-foreground">
