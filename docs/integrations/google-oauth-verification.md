@@ -7,7 +7,8 @@ The production project is `artful-winter-508611-e4` and the public app name is
 ## Current classification
 
 - Audience: External.
-- Publishing status before submission: Testing, with one test user.
+- Publishing status: In production. The integration remains limited by a server-side
+  allowlist while verification is pending.
 - Sensitive access: Google Calendar event access.
 - Restricted access: none. An annual third-party security assessment is therefore not
   expected for the current scope set.
@@ -20,7 +21,7 @@ The production project is `artful-winter-508611-e4` and the public app name is
 Branding:
 
 - App name: `MakersHub` (same spelling and capitalization as the site).
-- Homepage: `https://makershub.app.br/lp` (public product page; `/` requires sign-in).
+- Homepage: `https://makershub.app.br/` (public product page for signed-out visitors).
 - Privacy policy: `https://makershub.app.br/privacidade`.
 - Terms: `https://makershub.app.br/termos`.
 - Authorized domain: `makershub.app.br`.
@@ -51,7 +52,22 @@ OAuth client:
 
 ## Scope justification for the submission form
 
-Paste and adapt only if the Google form separates the scopes:
+The current Google form provides one shared justification field. Use this text:
+
+> MakersHub uses calendar.events.owned to provide user-initiated, two-way
+> synchronization between the MakersHub Agenda and the user's primary Google Calendar.
+> It reads current and future events and creates, updates, or deletes the matching event
+> when the user performs the corresponding action in either service. Access is limited
+> to calendars owned by the user; the app does not access calendars the user does not
+> own. Read-only access is insufficient because the feature must propagate
+> user-requested creates, edits, and deletions. calendar.calendarlist.readonly is used
+> only to identify the primary calendar and its time zone without modifying calendar
+> lists or sharing. openid and email verify that the selected Google Account matches the
+> authenticated MakersHub account. Users can disconnect at any time, which revokes
+> access and deletes stored OAuth credentials.
+
+Use the following explanations if Google separates the scopes in a later version of
+the form:
 
 ### `calendar.calendarlist.readonly`
 
@@ -146,8 +162,8 @@ or customer information.
 4. Disconnect and reconnect the pilot account so its stored grant contains the exact
    submitted scope set; repeat the two-way production test.
 5. Record the demonstration video with the pilot account.
-6. Change the External app from Testing to In production, select **Prepare for
-   verification**, enter the scope justifications and video URL, then submit.
+6. In **Prepare for verification**, enter the scope justification and unlisted YouTube
+   video URL, then submit. The External app must remain **In production**.
 7. When Google sends the reviewer email address, provision and allowlist its matching
    MakersHub account using the instructions above.
 8. Do not change the app name, logo, domains, client URLs, or scopes while review is in
