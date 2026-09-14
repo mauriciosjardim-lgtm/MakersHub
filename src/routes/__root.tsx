@@ -116,7 +116,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         name: "viewport",
         content: "width=device-width, initial-scale=1, viewport-fit=cover",
       },
-      { title: "MakersHub — O Hub Completo para Produtoras de Audiovisual" },
+      { title: "MakersHub" },
       {
         name: "description",
         content:
@@ -125,7 +125,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "theme-color", content: "#0a0a0a" },
       {
         property: "og:title",
-        content: "MakersHub — O Hub Completo para Produtoras de Audiovisual",
+        content: "MakersHub",
       },
       {
         property: "og:description",
@@ -136,7 +136,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "twitter:card", content: "summary_large_image" },
       {
         name: "twitter:title",
-        content: "MakersHub — O Hub Completo para Produtoras de Audiovisual",
+        content: "MakersHub",
       },
       {
         name: "twitter:description",

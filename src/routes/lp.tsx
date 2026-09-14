@@ -4,9 +4,7 @@ import { SalesLandingPage } from "@/components/landing/sales-landing-page";
 export const Route = createFileRoute("/lp")({
   head: () => ({
     meta: [
-      {
-        title: "MakersHub — Sua produtora organizada do comercial à entrega",
-      },
+      { title: "MakersHub" },
       {
         name: "description",
         content:
