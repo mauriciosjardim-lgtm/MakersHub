@@ -3,13 +3,17 @@
 ## Implemented and verified
 
 The OAuth connection stage was deployed in v0.8.19 through PR #20, initially disabled.
-The server-side pilot is enabled for the fixed verified identity below. Bidirectional
+The server-side pilot is enabled for the verified identity configured below. Bidirectional
 event synchronization uses that Google account's primary calendar.
 Set `GOOGLE_CALENDAR_ENABLED=false` to pause new integration operations.
 
-Only the verified Supabase identity belonging to `mauriciosjardim@gmail.com` can
-participate. Authorization uses its fixed UUID, not a client-provided email, admin
-role, query parameter or localStorage setting. Anonymous and portal users are denied.
+Only the verified Supabase identities in `GOOGLE_CALENDAR_ALLOWED_USER_IDS` can
+participate. The production value currently contains only the UUID belonging to
+`mauriciosjardim@gmail.com`. Use a comma-separated list to add the dedicated reviewer
+account. Authorization uses server-configured UUIDs, not a client-provided email,
+admin role, query parameter or localStorage setting. Anonymous and portal users are
+denied. After Google approves the app, setting the variable to `*` makes the integration
+available to every verified, non-portal MakersHub user.
 
 Implemented endpoints under `/api/integrations/google-calendar`:
 
@@ -58,10 +62,11 @@ policies to silence it. See the [advisor explanation](https://supabase.com/docs/
 
 ## Configuration and next steps, in order
 
-1. OAuth consent scopes are configured in Google Cloud: `openid`, `email`,
+1. The production code requests `openid`, `email`,
    `https://www.googleapis.com/auth/calendar.calendarlist.readonly` and
-   `https://www.googleapis.com/auth/calendar.events`. Reassess scopes before public
-   release against the final synchronization behavior.
+   `https://www.googleapis.com/auth/calendar.events.owned`. The owned-events scope is
+   the narrowest write scope compatible with the primary-calendar synchronization.
+   Keep the Google Cloud Data Access page identical to this list.
 2. Server secrets `GOOGLE_CALENDAR_CLIENT_SECRET` and
    `GOOGLE_CALENDAR_ENCRYPTION_KEY` are configured in Worker `nervon1` (2026-09-14).
    The encryption key is a base64-encoded random 32-byte key. The server
@@ -78,8 +83,8 @@ policies to silence it. See the [advisor explanation](https://supabase.com/docs/
    disconnect/revoke, and verify a second MAKERShub account has no access.
 5. The initial synchronization imports current and future primary-calendar events.
    Private Google events are represented as `Ocupado` without their details.
-6. Verify published homepage/privacy/terms, domain ownership and the actual data
-   practices before requesting Google verification or any public rollout.
+6. Complete and record the verification steps in
+   [`google-oauth-verification.md`](./google-oauth-verification.md) before public rollout.
 
 Google project: `artful-winter-508611-e4`. Calendar API is enabled. OAuth app is in
 Testing and the pilot email is registered as a test user. Web client:

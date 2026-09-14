@@ -14,7 +14,7 @@ import {
   type TokenBundle,
 } from "./protocol";
 import { oauthCookie, readOAuthCookie, requireSameOrigin } from "./http.server";
-import { GoogleCalendarProvider } from "./provider.server";
+import { authorizationUrl, GoogleCalendarProvider } from "./provider.server";
 
 const owner: Owner = {
   userId: "c88dae71-5946-4e75-a3db-c0dd26fe0dd1",
@@ -140,6 +140,7 @@ function fixture() {
     repo,
     provider,
     enabled: () => flag,
+    allowedUserIds: () => owner.userId,
     identity: async (id) => ({ id, email: owner.email, email_confirmed_at: "2026-09-14" }),
   });
   const start = async () => {
@@ -382,6 +383,19 @@ describe("HTTP boundary", () => {
 });
 
 describe("Google token endpoint contract", () => {
+  test("requests only the calendar scopes required by the primary-calendar flow", () => {
+    expect(CALENDAR_SCOPES).toEqual([
+      "openid",
+      "email",
+      "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
+      "https://www.googleapis.com/auth/calendar.events.owned",
+    ]);
+    const url = new URL(authorizationUrl(config, randomSecret(), randomSecret()));
+    expect(url.searchParams.get("scope")?.split(" ")).toEqual([...CALENDAR_SCOPES]);
+    expect(url.searchParams.get("scope")?.split(" ")).not.toContain(
+      "https://www.googleapis.com/auth/calendar.events",
+    );
+  });
   test("default transport preserves the native Workers fetch receiver", async () => {
     const original = globalThis.fetch;
     const calls: string[] = [];

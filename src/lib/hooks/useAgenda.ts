@@ -4,7 +4,6 @@ import type { Database } from "@/lib/database.types";
 import { getEmpresaId } from "@/lib/empresaId";
 import { dbErro } from "@/lib/dbError";
 import { registerSessionDisposer } from "@/lib/sessionScope";
-import { GOOGLE_CALENDAR_PILOT_USER_ID } from "@/lib/google-calendar/access-policy";
 import type { TipoEvento, RefTipo, Evento } from "@/lib/mock/agenda";
 
 type EventRow = {
@@ -82,7 +81,7 @@ registerSessionDisposer(resetAgendaStore);
 
 async function enrollCreatedEvent(eventId: string) {
   const { data } = await supabase.auth.getSession();
-  if (data.session?.user.id !== GOOGLE_CALENDAR_PILOT_USER_ID) return;
+  if (!data.session) return;
   const response = await fetch("/api/integrations/google-calendar/sync/enroll", {
     method: "POST",
     headers: {
@@ -91,6 +90,9 @@ async function enrollCreatedEvent(eventId: string) {
     },
     body: JSON.stringify({ eventIds: [eventId] }),
   });
+  // The server owns the rollout allowlist. A normal user who is not enabled
+  // should not see an error after successfully creating a local event.
+  if (response.status === 403) return;
   if (!response.ok) throw new Error("google_calendar_enroll_failed");
 }
 

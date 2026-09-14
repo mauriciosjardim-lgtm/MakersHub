@@ -19,6 +19,7 @@ export interface CalendarProvider {
 export interface ServiceDependencies {
   config: CalendarConfig;
   enabled(): string | undefined;
+  allowedUserIds(): string | undefined;
   identity(userId: string): Promise<(CalendarIdentity & { email?: string }) | null>;
   repo: CalendarRepository;
   provider: CalendarProvider;
@@ -30,7 +31,11 @@ export class CalendarService {
   async authorize(owner: Owner, disconnect = false) {
     const user = await this.deps.identity(owner.userId);
     if (
-      !canAccessGoogleCalendar(disconnect ? "true" : this.deps.enabled(), user) ||
+      !canAccessGoogleCalendar(
+        disconnect ? "true" : this.deps.enabled(),
+        user,
+        this.deps.allowedUserIds(),
+      ) ||
       !user?.email ||
       !(await this.deps.repo.sessionActive(owner))
     ) {

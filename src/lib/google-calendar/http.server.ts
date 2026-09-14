@@ -77,6 +77,7 @@ function runtime(config: CalendarConfig) {
     repo,
     provider: new GoogleCalendarProvider(config),
     enabled: () => process.env.GOOGLE_CALENDAR_ENABLED,
+    allowedUserIds: () => process.env.GOOGLE_CALENDAR_ALLOWED_USER_IDS,
     identity: async (id) => {
       const { data, error } = await admin.auth.admin.getUserById(id);
       if (error) throw new CalendarError("identity_unavailable", 503);
@@ -162,7 +163,11 @@ export async function handleGoogleCalendar(request: Request): Promise<Response> 
       return new Response(null, { status: 303, headers });
     }
     const auth = await authenticated(request);
-    const eligible = canAccessGoogleCalendar("true", auth.user);
+    const eligible = canAccessGoogleCalendar(
+      "true",
+      auth.user,
+      process.env.GOOGLE_CALENDAR_ALLOWED_USER_IDS,
+    );
     if (!eligible) {
       if (url.pathname.endsWith("/status"))
         return json({ enabled: false, configured: false, status: "unavailable", email: null });
