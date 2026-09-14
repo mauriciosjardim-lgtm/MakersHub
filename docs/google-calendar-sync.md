@@ -10,7 +10,7 @@ Sync runs every 60 seconds while the Agenda page is visible, plus the compact `A
 
 ## Consistency and access
 
-Service-only metadata tables have RLS and no browser grants. The write RPC checks user/tenant/session, current connected OAuth generation and an expiring per-user lease. Local updates increment a database-controlled revision; imported updates/deletes compare that revision and commit the event and baseline atomically. External writes use Google ETags and `If-Match`.
+Service-only metadata tables have RLS and no browser grants. The write RPC checks user/tenant/session and the current connected OAuth generation on every local mutation, plus an expiring per-user lease for reconciliation writes. The HTTP boundary validates the pilot identity and feature flag once per request, and the request reuses one authorized Google access token to stay within the Worker subrequest budget. Local updates increment a database-controlled revision; imported updates/deletes compare that revision and commit the event and baseline atomically. External writes use Google ETags and `If-Match`.
 
 Three-way comparison uses the last acknowledged payload. Independent edits or edit-versus-delete return a conflict; no last-writer-wins overwrite. Explicit resolution includes a fresh fingerprint. JSONB key ordering does not affect payload equality. Deterministic Google IDs, persisted remapping before recreation, private markers and retained tombstones prevent duplicate insertion after uncertain responses.
 

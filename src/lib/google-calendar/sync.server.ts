@@ -38,6 +38,7 @@ const resolutionSchema = z.object({
   fingerprint: z.string().min(1).max(100),
   side: z.enum(["local", "google"]),
 });
+const MAX_CHANGES_PER_RUN = 4;
 export const syncInput = z.object({
   calendarId: z.string().min(1).max(1024).optional(),
   eventIds: z.array(z.string().uuid()).max(20).optional(),
@@ -55,7 +56,6 @@ export class SyncRepository implements SyncStore {
     private db: SupabaseClient,
     private owner: Owner,
     private generation: string,
-    private authorize: () => Promise<unknown>,
   ) {}
   async settings() {
     const { data, error } = await this.db
@@ -102,7 +102,6 @@ export class SyncRepository implements SyncStore {
     }
   }
   async write(action: string, data: Record<string, unknown> = {}) {
-    await this.authorize();
     const { data: result, error } = await this.db.rpc("google_calendar_sync_write", {
       p_user: this.owner.userId,
       p_empresa: this.owner.empresaId,
@@ -135,6 +134,13 @@ export async function eventId(namespace: string) {
     await crypto.subtle.digest("SHA-256", new TextEncoder().encode(namespace)),
   );
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+export function reusePromise<T>(load: () => Promise<T>) {
+  let value: Promise<T> | undefined;
+  return () => {
+    value ??= load();
+    return value;
+  };
 }
 export class CalendarSync {
   constructor(
@@ -217,6 +223,7 @@ export class CalendarSync {
       const byLocal = new Map(events.map((e) => [e.id, e]));
       const known = new Set(links.map((l) => l.google_event_id));
       const deadline = Date.now() + 25000;
+      let changes = 0;
       for (const link of links) {
         if (Date.now() > deadline) {
           report.partial = true;
@@ -265,6 +272,11 @@ export class CalendarSync {
           }
         }
         if (decision === "none") continue;
+        if (changes >= MAX_CHANGES_PER_RUN) {
+          report.partial = true;
+          break;
+        }
+        changes++;
         if (decision === "ack") {
           await this.store.write("ack", { id: link.id, base: local });
           continue;
@@ -326,6 +338,11 @@ export class CalendarSync {
             report.partial = true;
             break;
           }
+          if (changes >= MAX_CHANGES_PER_RUN) {
+            report.partial = true;
+            break;
+          }
+          changes++;
           const fresh = await this.api.get(s.calendar_id, e.id);
           if (!fresh || fresh.status === "cancelled") continue;
           const value = fromRemote(fresh);
@@ -355,7 +372,7 @@ export async function syncRuntime(admin: SupabaseClient, service: CalendarServic
     .eq("empresa_id", owner.empresaId)
     .maybeSingle();
   if (error || data?.status !== "connected") throw new CalendarError("reconnect_required", 409);
-  const store = new SyncRepository(admin, owner, data.generation, () => service.authorize(owner));
-  const api = new EventsApi(() => service.accessToken(owner));
+  const store = new SyncRepository(admin, owner, data.generation);
+  const api = new EventsApi(reusePromise(() => service.accessToken(owner)));
   return { sync: new CalendarSync(store, api, `${owner.userId}:${owner.empresaId}`), api };
 }

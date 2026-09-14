@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { CalendarSync, eventId, type SyncStore } from "./sync.server";
+import { CalendarSync, eventId, reusePromise, type SyncStore } from "./sync.server";
 import { EventsApi, isOwnedCalendar } from "./events.server";
 import { CalendarError } from "./protocol";
 import {
@@ -338,6 +338,16 @@ describe("three-way calendar reconciliation", () => {
     expect(await eventId("tenant-a:event")).toBe(a);
     expect(await eventId("tenant-b:event")).not.toBe(a);
   });
+  test("a request reuses one authorized Google access token", async () => {
+    let calls = 0;
+    const token = reusePromise(async () => `token-${++calls}`);
+    expect(await Promise.all([token(), token(), token()])).toEqual([
+      "token-1",
+      "token-1",
+      "token-1",
+    ]);
+    expect(calls).toBe(1);
+  });
   test("pushes local edit once with ETag and no invitations", async () => {
     const h = harness();
     h.store.rows[0].titulo = "Local edit";
@@ -411,6 +421,27 @@ describe("three-way calendar reconciliation", () => {
     expect(h.store.rows).toHaveLength(2);
     expect(h.store.maps).toHaveLength(1);
     expect(h.writes).toHaveLength(0);
+  });
+  test("bounds changed events per run and continues safely on the next run", async () => {
+    const h = harness();
+    h.events.clear();
+    h.store.rows = Array.from({ length: 5 }, (_, index) => ({
+      ...local(),
+      id: `local-${index}`,
+      titulo: `Evento ${index}`,
+    }));
+    h.store.maps = h.store.rows.map((row, index) => ({
+      ...link(null),
+      id: `6f81d0bd-d204-4c09-bb90-fc38bded063${index}`,
+      local_event_id: row.id,
+      google_event_id: `remote-${index}`,
+    }));
+    const first = await h.sync.run();
+    expect(first).toMatchObject({ pushed: 4, partial: true });
+    expect(h.events.size).toBe(4);
+    const second = await h.sync.run();
+    expect(second).toMatchObject({ pushed: 1, partial: false });
+    expect(h.events.size).toBe(5);
   });
   test("incomplete remote snapshot never deletes local events", async () => {
     const h = harness();
