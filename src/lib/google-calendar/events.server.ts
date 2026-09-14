@@ -9,8 +9,8 @@ const calendarSchema = z.object({
   timeZone: z.string().default("UTC"),
 });
 export type GoogleCalendar = z.infer<typeof calendarSchema>;
-export function isTestCalendar(c: GoogleCalendar) {
-  return !c.primary && c.accessRole === "owner" && /^makershub.*test/i.test(c.summary);
+export function isOwnedCalendar(c: GoogleCalendar) {
+  return c.accessRole === "owner";
 }
 export class EventsApi {
   constructor(
@@ -64,7 +64,10 @@ export class EventsApi {
         .parse(await r.json());
       all.push(...data.items);
       page = data.nextPageToken;
-      if (!page) return all.filter(isTestCalendar);
+      if (!page)
+        return all
+          .filter(isOwnedCalendar)
+          .sort((a, b) => Number(Boolean(b.primary)) - Number(Boolean(a.primary)));
     }
     throw new CalendarError("calendar_limit", 409);
   }
@@ -72,17 +75,18 @@ export class EventsApi {
     const r = await this.request(`users/me/calendarList/${encodeURIComponent(id)}`);
     if (!r.ok) throw new CalendarError("calendar_access_denied", 403);
     const c = calendarSchema.parse(await r.json());
-    if (!isTestCalendar(c)) throw new CalendarError("test_calendar_required", 403);
+    if (!isOwnedCalendar(c)) throw new CalendarError("calendar_access_denied", 403);
     return c;
   }
-  async list(id: string): Promise<RemoteEvent[]> {
+  async list(id: string, timeMin: string): Promise<RemoteEvent[]> {
     const all: RemoteEvent[] = [];
     let page: string | undefined;
     for (let i = 0; i < 10; i++) {
       const q = new URLSearchParams({
         maxResults: "250",
         showDeleted: "true",
-        singleEvents: "false",
+        singleEvents: "true",
+        timeMin,
         ...(page ? { pageToken: page } : {}),
       });
       const r = await this.request(`calendars/${encodeURIComponent(id)}/events?${q}`);

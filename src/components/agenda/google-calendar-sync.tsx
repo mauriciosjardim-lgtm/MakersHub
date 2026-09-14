@@ -6,7 +6,7 @@ import type { SyncSettings, SyncValue } from "@/lib/google-calendar/sync-model";
 import type { SyncReport } from "@/lib/google-calendar/sync.server";
 
 type State = { settings: SyncSettings | null };
-type Calendar = { id: string };
+type Calendar = { id: string; primary?: boolean };
 type Resolution = { id: string; fingerprint: string; side: "local" | "google" };
 
 const errors: Record<string, string> = {
@@ -77,11 +77,12 @@ export function GoogleCalendarSync({ userId }: { userId: string }) {
       setMessage("");
       try {
         let current = state ?? (await load());
-        if (!current.settings) {
+        if (!current.settings || current.settings.configuration_version < 2) {
           if (!manual) return;
           const { calendars } = await request<{ calendars: Calendar[] }>("calendars");
-          if (!calendars.length) throw new Error("calendar_access_denied");
-          await request("sync/configure", { calendarId: calendars[0].id });
+          const primary = calendars.find((calendar) => calendar.primary);
+          if (!primary) throw new Error("calendar_access_denied");
+          await request("sync/configure", { calendarId: primary.id });
           current = await load();
         }
         const result = await request<SyncReport>("sync/run", { resolution });

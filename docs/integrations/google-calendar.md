@@ -3,8 +3,8 @@
 ## Implemented and verified
 
 The OAuth connection stage was deployed in v0.8.19 through PR #20, initially disabled.
-This configuration enables the existing server-side pilot for the fixed verified
-identity below. Event synchronization is not implemented.
+The server-side pilot is enabled for the fixed verified identity below. Bidirectional
+event synchronization uses that Google account's primary calendar.
 Set `GOOGLE_CALENDAR_ENABLED=false` to pause new integration operations.
 
 Only the verified Supabase identity belonging to `mauriciosjardim@gmail.com` can
@@ -27,8 +27,9 @@ cannot resurrect a disconnected connection. Revocation failures retain encrypted
 credentials in a blocked state for retry. Provider errors and credentials are never
 returned to the browser or logged by this integration.
 
-The Agenda connection control uses the server's authorization result. It explicitly
-states that event synchronization is a later stage.
+The Agenda shows `Conectar agenda` before authorization and a compact `Atualizar`
+button after authorization. The first update chooses the primary calendar
+automatically; the user does not need to create or select a MAKERShub calendar.
 
 ## Database
 
@@ -75,8 +76,8 @@ policies to silence it. See the [advisor explanation](https://supabase.com/docs/
 4. Enable the pilot and sign in as `mauriciosjardim@gmail.com`. Connect the same
    Google account, check persisted status after reload, reject consent and reconnect,
    disconnect/revoke, and verify a second MAKERShub account has no access.
-5. Implement idempotent event synchronization against a dedicated test calendar.
-   Test event CRUD, time zones, all-day/recurring events and duplicate prevention.
+5. The initial synchronization imports current and future primary-calendar events.
+   Private Google events are represented as `Ocupado` without their details.
 6. Verify published homepage/privacy/terms, domain ownership and the actual data
    practices before requesting Google verification or any public rollout.
 
