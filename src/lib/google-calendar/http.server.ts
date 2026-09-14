@@ -14,6 +14,7 @@ import {
 import { GoogleCalendarProvider } from "./provider.server";
 import { SupabaseCalendarRepository } from "./repository.server";
 import { CalendarService } from "./service.server";
+import { syncInput, syncRuntime } from "./sync.server";
 
 const uuid = z.string().uuid();
 export function calendarConfig(): CalendarConfig {
@@ -125,13 +126,19 @@ export async function handleGoogleCalendar(request: Request): Promise<Response> 
   let config: CalendarConfig | undefined;
   try {
     const expectedMethod =
-      isCallback || url.pathname === `${CALENDAR_PATH}/status` ? "GET" : "POST";
+      isCallback ||
+      ["/status", "/sync", "/calendars"].some((p) => url.pathname === `${CALENDAR_PATH}${p}`)
+        ? "GET"
+        : "POST";
     if (
       ![
         CALLBACK_PATH,
         `${CALENDAR_PATH}/start`,
         `${CALENDAR_PATH}/status`,
         `${CALENDAR_PATH}/disconnect`,
+        ...["/sync", "/calendars", "/sync/configure", "/sync/enroll", "/sync/run"].map(
+          (p) => `${CALENDAR_PATH}${p}`,
+        ),
       ].includes(url.pathname)
     )
       return json({ error: "not_found" }, 404);
@@ -187,6 +194,34 @@ export async function handleGoogleCalendar(request: Request): Promise<Response> 
       await service.disconnect(owner);
       headers.set("Set-Cookie", oauthCookie("", config.redirectUri, true));
       return json({ status: "disconnected" });
+    }
+    if (url.pathname.includes("/sync") || url.pathname.endsWith("/calendars")) {
+      const { sync, api } = await syncRuntime(admin, service, owner);
+      if (request.method === "GET")
+        return json(
+          url.pathname.endsWith("/calendars")
+            ? { calendars: await api.calendars() }
+            : await sync.status(),
+        );
+      const text = await request.text();
+      if (text.length > 8192) throw new CalendarError("invalid_request", 413);
+      let body: z.infer<typeof syncInput>;
+      try {
+        body = syncInput.parse(JSON.parse(text || "{}"));
+      } catch {
+        throw new CalendarError("invalid_request");
+      }
+      if (url.pathname.endsWith("/configure")) {
+        if (!body.calendarId) throw new CalendarError("invalid_request");
+        await sync.configure(body.calendarId);
+        return json({ ok: true });
+      }
+      if (url.pathname.endsWith("/enroll")) {
+        if (!body.eventIds?.length) throw new CalendarError("invalid_request");
+        await sync.enroll(body.eventIds);
+        return json({ ok: true });
+      }
+      return json(await sync.run(body.resolution));
     }
     const result = await service.start(owner);
     headers.set("Set-Cookie", oauthCookie(result.browser, config.redirectUri));

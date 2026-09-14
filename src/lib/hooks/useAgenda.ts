@@ -1,18 +1,38 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
+import type { Database } from "@/lib/database.types";
 import { getEmpresaId } from "@/lib/empresaId";
 import { dbErro } from "@/lib/dbError";
 import { registerSessionDisposer } from "@/lib/sessionScope";
 import type { TipoEvento, RefTipo, Evento } from "@/lib/mock/agenda";
 
-function rowToEvento(r: any): Evento {
+type EventRow = {
+  id: string;
+  titulo: string;
+  descricao: string | null;
+  inicio: string;
+  fim: string;
+  dia_todo: boolean;
+  tipo: string;
+  local: string | null;
+  participantes: string[] | null;
+  criado_em: string;
+  ref_tipo: string | null;
+  ref_id: string | null;
+};
+function rowToEvento(r: EventRow): Evento {
   return {
-    id: r.id, titulo: r.titulo, descricao: r.descricao ?? undefined,
-    inicio: r.inicio, fim: r.fim, diaTodo: r.dia_todo ?? false,
-    tipo: r.tipo as TipoEvento, local: r.local ?? undefined,
+    id: r.id,
+    titulo: r.titulo,
+    descricao: r.descricao ?? undefined,
+    inicio: r.inicio,
+    fim: r.fim,
+    diaTodo: r.dia_todo ?? false,
+    tipo: r.tipo as TipoEvento,
+    local: r.local ?? undefined,
     participantes: r.participantes ?? undefined,
     criadoEm: r.criado_em,
-    refTipo: r.ref_tipo as RefTipo ?? undefined,
+    refTipo: (r.ref_tipo as RefTipo) ?? undefined,
     refId: r.ref_id ?? undefined,
   };
 }
@@ -22,7 +42,7 @@ function rowToEvento(r: any): Evento {
 let eventos: Evento[] = [];
 let loading = true;
 const listeners = new Set<() => void>();
-const emit = () => listeners.forEach(fn => fn());
+const emit = () => listeners.forEach((fn) => fn());
 let initialized = false;
 let channel: ReturnType<typeof supabase.channel> | null = null;
 
@@ -34,9 +54,13 @@ async function init() {
   loading = false;
   emit();
 
-  channel = supabase.channel("eventos_realtime")
+  channel = supabase
+    .channel("eventos_realtime")
     .on("postgres_changes", { event: "*", schema: "public", table: "eventos" }, async () => {
-      const { data: fresh } = await supabase.from("eventos").select("*").order("inicio", { ascending: true });
+      const { data: fresh } = await supabase
+        .from("eventos")
+        .select("*")
+        .order("inicio", { ascending: true });
       eventos = (fresh ?? []).map(rowToEvento);
       emit();
     })
@@ -44,7 +68,10 @@ async function init() {
 }
 
 export function resetAgendaStore() {
-  if (channel) { void supabase.removeChannel(channel); channel = null; }
+  if (channel) {
+    void supabase.removeChannel(channel);
+    channel = null;
+  }
   initialized = false;
   eventos = [];
   loading = true;
@@ -57,10 +84,14 @@ registerSessionDisposer(resetAgendaStore);
 export function useAgendaSupa() {
   const [snap, setSnap] = useState({ eventos, loading });
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => { if (session) init(); });
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) init();
+    });
     const update = () => setSnap({ eventos: [...eventos], loading });
     listeners.add(update);
-    return () => { listeners.delete(update); };
+    return () => {
+      listeners.delete(update);
+    };
   }, []);
   return snap;
 }
@@ -70,14 +101,23 @@ export function useAgendaSupa() {
 export const agendaActions = {
   async criar(input: Omit<Evento, "id" | "criadoEm">) {
     const empresa_id = await getEmpresaId();
-    const { data, error } = await supabase.from("eventos").insert({
-      empresa_id, titulo: input.titulo, descricao: input.descricao ?? null,
-      inicio: input.inicio, fim: input.fim,
-      dia_todo: input.diaTodo ?? false, tipo: input.tipo,
-      local: input.local ?? null,
-      participantes: input.participantes ?? null,
-      ref_tipo: input.refTipo ?? null, ref_id: input.refId ?? null,
-    }).select().single();
+    const { data, error } = await supabase
+      .from("eventos")
+      .insert({
+        empresa_id,
+        titulo: input.titulo,
+        descricao: input.descricao ?? null,
+        inicio: input.inicio,
+        fim: input.fim,
+        dia_todo: input.diaTodo ?? false,
+        tipo: input.tipo,
+        local: input.local ?? null,
+        participantes: input.participantes ?? null,
+        ref_tipo: input.refTipo ?? null,
+        ref_id: input.refId ?? null,
+      })
+      .select()
+      .single();
     if (dbErro(error, "criar evento")) return null;
     if (data) {
       eventos = [...eventos, rowToEvento(data)].sort((a, b) => a.inicio.localeCompare(b.inicio));
@@ -87,7 +127,7 @@ export const agendaActions = {
   },
 
   async atualizar(id: string, patch: Partial<Evento>) {
-    const payload: any = {};
+    const payload: Database["public"]["Tables"]["eventos"]["Update"] = {};
     if (patch.titulo !== undefined) payload.titulo = patch.titulo;
     if (patch.descricao !== undefined) payload.descricao = patch.descricao;
     if (patch.inicio !== undefined) payload.inicio = patch.inicio;
@@ -100,18 +140,22 @@ export const agendaActions = {
     if (patch.refId !== undefined) payload.ref_id = patch.refId;
     const { error } = await supabase.from("eventos").update(payload).eq("id", id);
     if (dbErro(error, "atualizar evento")) return;
-    eventos = eventos.map(e => e.id === id ? { ...e, ...patch } : e);
+    eventos = eventos.map((e) => (e.id === id ? { ...e, ...patch } : e));
     emit();
   },
 
   async remover(id: string) {
     const { error } = await supabase.from("eventos").delete().eq("id", id);
     if (dbErro(error, "remover evento")) return;
-    eventos = eventos.filter(e => e.id !== id);
+    eventos = eventos.filter((e) => e.id !== id);
     emit();
   },
 
-  async upsertPorRef(refTipo: RefTipo, refId: string, input: Omit<Evento, "id" | "criadoEm" | "refTipo" | "refId">) {
+  async upsertPorRef(
+    refTipo: RefTipo,
+    refId: string,
+    input: Omit<Evento, "id" | "criadoEm" | "refTipo" | "refId">,
+  ) {
     // Não depende do cache da Agenda: tarefas podem ser editadas antes de esta tela
     // carregar. Consultar o banco evita criar outro evento para a mesma referência.
     const empresa_id = await getEmpresaId();
@@ -123,7 +167,8 @@ export const agendaActions = {
       .eq("ref_id", refId)
       .limit(1);
     if (dbErro(error, "localizar evento vinculado")) return;
-    const existente = encontrados?.[0] ?? eventos.find(e => e.refTipo === refTipo && e.refId === refId);
+    const existente =
+      encontrados?.[0] ?? eventos.find((e) => e.refTipo === refTipo && e.refId === refId);
     if (existente) {
       await this.atualizar(existente.id, { ...input, refTipo, refId });
       return existente.id;
@@ -133,11 +178,22 @@ export const agendaActions = {
   },
 
   async removerPorRef(refTipo: RefTipo, refId: string) {
-    const existente = eventos.find(e => e.refTipo === refTipo && e.refId === refId);
+    const existente = eventos.find((e) => e.refTipo === refTipo && e.refId === refId);
     if (existente) await this.remover(existente.id);
   },
 
   listarPorRef(refTipo: RefTipo, refId: string) {
-    return eventos.filter(e => e.refTipo === refTipo && e.refId === refId);
+    return eventos.filter((e) => e.refTipo === refTipo && e.refId === refId);
   },
 };
+
+// Refresh imported events only for the session that started the sync request.
+export async function refreshAgenda(userId: string) {
+  const before = await supabase.auth.getSession();
+  if (before.data.session?.user.id !== userId) return;
+  const { data, error } = await supabase.from("eventos").select("*").order("inicio");
+  const after = await supabase.auth.getSession();
+  if (error || after.data.session?.user.id !== userId) return;
+  eventos = (data ?? []).map(rowToEvento);
+  emit();
+}
