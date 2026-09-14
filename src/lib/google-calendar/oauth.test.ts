@@ -382,6 +382,40 @@ describe("HTTP boundary", () => {
 });
 
 describe("Google token endpoint contract", () => {
+  test("default transport preserves the native Workers fetch receiver", async () => {
+    const original = globalThis.fetch;
+    const calls: string[] = [];
+    globalThis.fetch = async function (this: unknown, url: RequestInfo | URL) {
+      if (this !== globalThis) throw new TypeError("Illegal invocation");
+      calls.push(String(url));
+      if (String(url).endsWith("/token"))
+        return Response.json({
+          access_token: "access",
+          refresh_token: "refresh",
+          token_type: "Bearer",
+          expires_in: 3600,
+          scope: CALENDAR_SCOPES.join(" "),
+        });
+      if (String(url).endsWith("/userinfo"))
+        return Response.json({ sub: "google-123", email: owner.email, email_verified: true });
+      return new Response(null, { status: 200 });
+    } as typeof fetch;
+    try {
+      const provider = new GoogleCalendarProvider(config);
+      const connected = await provider.exchange("code", "verifier", owner.email);
+      expect(connected.email).toBe(owner.email);
+      await provider.refresh(connected);
+      await provider.revoke(connected.refreshToken);
+      expect(calls).toEqual([
+        "https://oauth2.googleapis.com/token",
+        "https://openidconnect.googleapis.com/v1/userinfo",
+        "https://oauth2.googleapis.com/token",
+        "https://oauth2.googleapis.com/revoke",
+      ]);
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
   test("refresh sends secrets in form body, preserves refresh_token when omitted", async () => {
     const calls: { url: string; init?: RequestInit }[] = [];
     const http = (async (url, init) => {

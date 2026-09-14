@@ -28,7 +28,8 @@ export function authorizationUrl(config: CalendarConfig, state: string, challeng
 export class GoogleCalendarProvider {
   constructor(
     private config: CalendarConfig,
-    private http: typeof fetch = fetch,
+    // Workers requires the native fetch receiver to be globalThis, not this provider.
+    private http: typeof fetch = fetch.bind(globalThis),
   ) {}
 
   private async tokens(params: Record<string, string>) {
