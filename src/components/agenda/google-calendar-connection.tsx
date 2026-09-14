@@ -8,7 +8,7 @@ import { GoogleCalendarSync } from "./google-calendar-sync";
 
 type Status = { enabled: boolean; configured: boolean; status: string; email: string | null };
 const messages: Record<string, string> = {
-  connected: "Google Agenda conectada. Configure a sincronização abaixo.",
+  connected: "",
   consent_denied: "Conexão cancelada no Google.",
   wrong_google_account: "Use a mesma conta Google do seu usuário de teste.",
   permissions_missing: "Autorize as permissões solicitadas para concluir a conexão.",
@@ -26,7 +26,6 @@ export function GoogleCalendarConnection() {
   const [snapshot, setSnapshot] = useState<{ userId: string; value: Status } | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  const [revision, setRevision] = useState(0);
   const status = snapshot && user && snapshot.userId === user.id ? snapshot.value : null;
 
   useEffect(() => {
@@ -55,17 +54,24 @@ export function GoogleCalendarConnection() {
       }
     })().catch(() => undefined);
     return () => controller.abort();
-  }, [currentUserId, revision]);
+  }, [currentUserId]);
 
   if (!status?.configured || (!status.enabled && status.status === "disconnected")) return null;
 
-  async function act(action: "start" | "disconnect") {
+  async function connect() {
     setBusy(true);
     setMessage("");
     try {
       const { data } = await supabase.auth.getSession();
       if (!data.session || data.session.user.id !== user?.id) return;
-      const response = await fetch(`/api/integrations/google-calendar/${action}`, {
+      if (status?.status === "reconnect_required" || status?.status === "revoking") {
+        const disconnected = await fetch("/api/integrations/google-calendar/disconnect", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${data.session.access_token}` },
+        });
+        if (!disconnected.ok) throw new Error("disconnect_failed");
+      }
+      const response = await fetch("/api/integrations/google-calendar/start", {
         method: "POST",
         headers: { Authorization: `Bearer ${data.session.access_token}` },
       });
@@ -76,48 +82,32 @@ export function GoogleCalendarConnection() {
         setMessage(messages[result.error ?? ""] ?? "Não foi possível concluir. Tente novamente.");
         return;
       }
-      if (action === "start" && result.url) {
+      if (result.url) {
         const destination = new URL(result.url);
         if (destination.origin !== "https://accounts.google.com")
           throw new Error("Invalid destination");
         window.location.assign(destination.href);
-      } else setRevision((n) => n + 1);
+      }
     } catch {
       setMessage("Não foi possível concluir. Tente novamente.");
     } finally {
       setBusy(false);
     }
   }
-  const hasConnection = !["disconnected", "pending"].includes(status.status);
+  const connected = status.enabled && status.status === "connected";
   return (
     <div className="flex flex-wrap items-center gap-2 text-xs">
-      {hasConnection ? (
-        <>
-          <GoogleCalendarIcon className="size-4" />
-          <span>
-            {status.status === "connected" ? "Google Agenda conectada" : "Conexão requer atenção"}
-            {status.email ? ` · ${status.email}` : ""}
-          </span>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={busy}
-            onClick={() => void act("disconnect")}
-          >
-            Desconectar
-          </Button>
-        </>
-      ) : (
+      {!connected && (
         <Button
           size="sm"
           variant="outline"
           disabled={busy || !status.enabled}
-          onClick={() => void act("start")}
+          onClick={() => void connect()}
         >
-          <GoogleCalendarIcon className="size-4" /> Conectar Google Agenda
+          <GoogleCalendarIcon className="size-4" /> Conectar agenda
         </Button>
       )}
-      {status.enabled && status.status === "connected" && currentUserId && (
+      {connected && currentUserId && (
         <GoogleCalendarSync key={currentUserId} userId={currentUserId} />
       )}
       {message && (
