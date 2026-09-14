@@ -404,8 +404,9 @@ function Hero() {
           </h1>
 
           <p className="mx-auto mt-6 max-w-2xl text-base leading-relaxed text-white/62 sm:text-lg">
-            Centralize clientes, propostas, projetos, agenda e financeiro num sistema que entende o
-            fluxo de uma produtora — do primeiro contato à entrega final.
+            O MakersHub é uma plataforma de gestão para produtoras audiovisuais. Centralize
+            clientes, propostas, projetos, agenda e financeiro em um sistema que acompanha toda a
+            operação — do primeiro contato à entrega final.
           </p>
         </div>
 
