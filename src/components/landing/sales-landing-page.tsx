@@ -1529,17 +1529,32 @@ function FinalCta() {
 function Footer() {
   return (
     <footer className="border-t border-white/[0.055] px-4 py-8 sm:px-6 lg:px-8">
-      <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-5 text-center sm:flex-row sm:text-left">
-        <Brand compact />
-        <div className="flex items-center gap-5 text-xs text-white/35">
-          <a className="transition hover:text-white" href="/termos">
-            Termos
-          </a>
-          <a className="transition hover:text-white" href="/privacidade">
-            Privacidade
-          </a>
-          <span>© {new Date().getFullYear()} MakersHub</span>
+      <div className="mx-auto max-w-7xl">
+        <div className="flex flex-col items-center justify-between gap-5 text-center sm:flex-row sm:text-left">
+          <Brand compact />
+          <div className="flex items-center gap-5 text-xs text-white/35">
+            <a className="transition hover:text-white" href="/termos">
+              Termos
+            </a>
+            <a className="transition hover:text-white" href="/privacidade">
+              Privacidade
+            </a>
+            <span>© {new Date().getFullYear()} MakersHub</span>
+          </div>
         </div>
+        <p className="mx-auto mt-6 max-w-4xl border-t border-white/[0.055] pt-6 text-center text-xs leading-relaxed text-white/38">
+          A integração opcional com o Google Agenda usa o e-mail da Conta Google, a lista de agendas
+          e os eventos das agendas que você possui para exibir e sincronizar compromissos nos dois
+          sentidos. Você pode desconectar a integração e revogar o acesso a qualquer momento. Veja
+          como tratamos esses dados na nossa{" "}
+          <a
+            className="text-white/58 underline underline-offset-2 hover:text-white"
+            href="/privacidade"
+          >
+            Política de Privacidade
+          </a>
+          .
+        </p>
       </div>
     </footer>
   );
