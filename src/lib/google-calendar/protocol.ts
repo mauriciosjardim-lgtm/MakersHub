@@ -6,7 +6,7 @@ export const CALENDAR_SCOPES = [
   "openid",
   "email",
   "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
-  "https://www.googleapis.com/auth/calendar.events",
+  "https://www.googleapis.com/auth/calendar.events.owned",
 ] as const;
 export const OAUTH_TTL_SECONDS = 600;
 

@@ -2,6 +2,14 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { GoogleCalendarIcon } from "@/components/icons/google-calendar";
 
 import { GoogleCalendarSync } from "./google-calendar-sync";
@@ -25,6 +33,7 @@ export function GoogleCalendarConnection() {
   // Keep results bound to the account that requested them, even during logout/login races.
   const [snapshot, setSnapshot] = useState<{ userId: string; value: Status } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [disclosureOpen, setDisclosureOpen] = useState(false);
   const [message, setMessage] = useState("");
   const status = snapshot && user && snapshot.userId === user.id ? snapshot.value : null;
 
@@ -59,6 +68,7 @@ export function GoogleCalendarConnection() {
   if (!status?.configured || (!status.enabled && status.status === "disconnected")) return null;
 
   async function connect() {
+    setDisclosureOpen(false);
     setBusy(true);
     setMessage("");
     try {
@@ -98,14 +108,59 @@ export function GoogleCalendarConnection() {
   return (
     <div className="flex flex-wrap items-center gap-2 text-xs">
       {!connected && (
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={busy || !status.enabled}
-          onClick={() => void connect()}
-        >
-          <GoogleCalendarIcon className="size-4" /> Conectar agenda
-        </Button>
+        <>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy || !status.enabled}
+            onClick={() => setDisclosureOpen(true)}
+          >
+            <GoogleCalendarIcon className="size-4" /> Conectar agenda
+          </Button>
+          <Dialog open={disclosureOpen} onOpenChange={setDisclosureOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Conectar ao Google Agenda</DialogTitle>
+                <DialogDescription>
+                  O MakersHub usará sua Conta do Google para sincronizar eventos com sua agenda
+                  principal.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-3 text-sm text-muted-foreground">
+                <p>
+                  A integração lê sua lista de agendas para localizar a principal e pode ler, criar,
+                  atualizar e excluir eventos das agendas que você possui. Serão sincronizados
+                  apenas eventos atuais e futuros.
+                </p>
+                <p>
+                  Título, descrição, local, data e horário podem ser copiados entre os serviços.
+                  Eventos privados vindos do Google aparecem somente como <strong>Ocupado</strong>.
+                  Os dados não são usados para publicidade nem para treinar modelos gerais de IA.
+                </p>
+                <p>
+                  Você poderá revogar o acesso em Configurações. Consulte a{" "}
+                  <a
+                    href="/privacidade"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-primary hover:underline"
+                  >
+                    Política de Privacidade
+                  </a>
+                  .
+                </p>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setDisclosureOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button disabled={busy} onClick={() => void connect()}>
+                  {busy ? "Conectando…" : "Continuar com Google"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </>
       )}
       {connected && currentUserId && (
         <GoogleCalendarSync key={currentUserId} userId={currentUserId} />

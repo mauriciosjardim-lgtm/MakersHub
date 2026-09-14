@@ -31,6 +31,7 @@ import { useAuth } from "@/lib/auth";
 import { supabase } from "@/lib/supabase";
 import { cn } from "@/lib/utils";
 import { COR_PRESETS, applyBrandColor } from "@/lib/brandColor";
+import { GoogleCalendarSettings } from "@/components/agenda/google-calendar-settings";
 
 export const Route = createFileRoute("/configuracoes")({
   // ssr:false — módulo privado, dados 100% client-side (mesmo padrão de /financeiro)
@@ -96,11 +97,7 @@ function ConfiguracoesPage() {
           <MetasSection />
           <EquipeSection />
           <AgenteIASection />
-          <PlaceholderSection
-            id="integracoes"
-            title="Integrações"
-            desc="Google Calendar, Drive, WhatsApp, Stripe."
-          />
+          <GoogleCalendarSettings />
           <PlaceholderSection
             id="plano"
             title="Plano e Faturamento"

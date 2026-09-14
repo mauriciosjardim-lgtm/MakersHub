@@ -12,10 +12,19 @@ describe("Google Calendar pilot access", () => {
       expect(canAccessGoogleCalendar(value, pilot)).toBe(false);
     }
   });
-  test("allows only the verified pilot identity", () => {
+  test("defaults to only the verified pilot identity", () => {
     expect(canAccessGoogleCalendar("true", pilot)).toBe(true);
     expect(canAccessGoogleCalendar("true", { ...pilot, id: "someone-else" })).toBe(false);
     expect(canAccessGoogleCalendar("true", null)).toBe(false);
+  });
+  test("accepts a server-controlled allowlist and trims its entries", () => {
+    const reviewer = { ...pilot, id: "reviewer-id" };
+    expect(canAccessGoogleCalendar("true", reviewer, "other-id, reviewer-id ")).toBe(true);
+    expect(canAccessGoogleCalendar("true", pilot, "other-id,reviewer-id")).toBe(false);
+    expect(canAccessGoogleCalendar("true", reviewer, "")).toBe(false);
+  });
+  test("allows any eligible identity only when production explicitly uses a wildcard", () => {
+    expect(canAccessGoogleCalendar("true", { ...pilot, id: "public-user" }, "*")).toBe(true);
   });
   test("rejects unverified, anonymous, and portal accounts", () => {
     expect(canAccessGoogleCalendar("true", { ...pilot, email_confirmed_at: null })).toBe(false);
@@ -27,7 +36,7 @@ describe("Google Calendar pilot access", () => {
       }),
     ).toBe(false);
   });
-  test("administrator metadata does not grant access to another identity", () => {
+  test("administrator metadata does not bypass the allowlist", () => {
     expect(
       canAccessGoogleCalendar("true", {
         ...pilot,
