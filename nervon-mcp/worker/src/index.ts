@@ -305,7 +305,8 @@ const TOOLS = [
   },
   {
     name: "listar_eventos",
-    description: "Lista eventos da agenda do MakersHub. Filtra opcionalmente por período (de/até).",
+    description:
+      "Lista eventos locais da agenda do MakersHub. Eventos vinculados ao Google Agenda são sempre excluídos por política de privacidade. Filtra opcionalmente por período (de/até).",
     inputSchema: {
       type: "object",
       properties: {
@@ -440,7 +441,8 @@ const TOOLS = [
   // ── Agenda: editar / excluir ──
   {
     name: "atualizar_evento",
-    description: "Edita um evento da agenda do MakersHub (título, horários, tipo, local). Só os campos enviados são alterados.",
+    description:
+      "Edita um evento local da agenda do MakersHub (título, horários, tipo, local). Eventos vinculados ao Google Agenda não podem ser acessados por esta ferramenta. Só os campos enviados são alterados.",
     inputSchema: {
       type: "object",
       properties: {
@@ -457,7 +459,8 @@ const TOOLS = [
   },
   {
     name: "excluir_evento",
-    description: "Exclui um evento da agenda do MakersHub. Ação irreversível.",
+    description:
+      "Exclui um evento local da agenda do MakersHub. Eventos vinculados ao Google Agenda não podem ser acessados por esta ferramenta. Ação irreversível.",
     inputSchema: {
       type: "object",
       properties: { evento_id: { type: "string", description: "ID do evento (obtido via listar_eventos)" } },
