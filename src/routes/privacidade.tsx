@@ -10,7 +10,7 @@ export const Route = createFileRoute("/privacidade")({
 
 function PrivacidadePage() {
   return (
-    <DocumentoLegal titulo="Política de Privacidade" atualizadoEm="14 de setembro de 2026">
+    <DocumentoLegal titulo="Política de Privacidade" atualizadoEm="15 de setembro de 2026">
       <S n="1" t="Quem somos">
         Esta Política descreve como o MakersHub, operado por RASTRO VISUAL LTDA (CNPJ
         42.503.639/0001-30), trata dados pessoais, na condição de controladora, em conformidade com
@@ -59,6 +59,15 @@ function PrivacidadePage() {
         </a>
         , incluindo os requisitos de Uso Limitado.
       </S>
+      <S n="5.1" t="Separação de dados do Google e serviços de inteligência artificial">
+        O MakersHub não envia dados brutos, agregados, anonimizados ou derivados das APIs do Google
+        a serviços de inteligência artificial ou aprendizado de máquina de terceiros. As integrações
+        opcionais via MCP com ChatGPT (OpenAI) e Claude (Anthropic) são tecnicamente impedidas de
+        consultar, alterar ou excluir eventos vinculados ao Google Agenda. Esses eventos e quaisquer
+        informações derivadas deles não são incluídos nas respostas do MCP. O MakersHub Assistant
+        disponível dentro da Plataforma processa informações localmente por regras determinísticas,
+        sem utilizar modelo de inteligência artificial ou serviço externo.
+      </S>
       <S n="6" t="Compartilhamento dos dados do Google">
         Os dados do Google não são transferidos a terceiros, exceto aos provedores de infraestrutura
         necessários para operar a sincronização, atualmente Supabase e Cloudflare, que os processam
@@ -75,9 +84,11 @@ function PrivacidadePage() {
       <S n="8" t="Com quem compartilhamos outros dados">
         Somente com operadores necessários à prestação do serviço: infraestrutura e banco de dados
         (Supabase), hospedagem e rede (Cloudflare), processamento de pagamentos (Asaas), envio de
-        e-mails (Resend) e mensuração de conversões (Meta). Todos sob contratos que exigem proteção
-        adequada. Dados podem ser transferidos internacionalmente para esses provedores, com
-        salvaguardas da LGPD.
+        e-mails (Resend), mensuração de conversões (Meta) e integrações opcionais iniciadas pelo
+        usuário com ChatGPT (OpenAI) e Claude (Anthropic). Dados recebidos das APIs do Google são
+        excluídos das integrações com ChatGPT e Claude. Todos os operadores necessários atuam sob
+        condições que exigem proteção adequada. Dados podem ser transferidos internacionalmente para
+        esses provedores, com salvaguardas da LGPD.
       </S>
       <S n="9" t="Segurança">
         Adotamos criptografia em trânsito (HTTPS/TLS), controle de acesso por empresa (isolamento
